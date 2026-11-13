@@ -5,6 +5,10 @@ let state = null, editing = null, brakeOpen = false, editingPin = null, editingV
 let brakePending = false, audioContext = null, audioReady = false, audioLoading = false, audioError = '', audioNextTime = 0, destinationSource = null, destinationRound = null, destinationPlaybackRound = null, destinationOffset = 0, destinationStartedAt = 0;
 const soundBuffers = {}, seenBrakes = new Set();
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const teamMeta = id => (state?.teams || []).find(t => t.id === id);
+const activeTeamList = () => (state?.activeTeams || []).map(id => teamMeta(id)).filter(Boolean);
+const teamLabel = id => teamMeta(id)?.short || id;
+const answerSlots = getter => activeTeamList().map(t => `<div>${esc(t.short)}: ${getter(t.id)}</div>`).join('');
 async function api(path, data) {
   const res = await fetch('/api/' + path, { method: data === undefined ? 'GET' : 'POST', headers: data === undefined ? {} : {'Content-Type':'application/json'}, body: data === undefined ? undefined : JSON.stringify(data) });
   const json = await res.json(); if (!res.ok) throw Error(json.error || 'Något gick fel.'); return json;
@@ -12,11 +16,11 @@ async function api(path, data) {
 async function action(path, data = {}) { try { state = await api(path, data); render(); } catch (e) { alert(e.message); } }
 function render() {
   if (!state?.role) { app.innerHTML = `<section class="login card"><h1>På resande fot</h1><p>Ange din kod för att komma till rätt vy.</p><form id="login"><label>Åtkomstkod<input name="code" type="password" required autocomplete="current-password" autocapitalize="none" spellcheck="false"></label><button>Logga in</button></form></section>`; return; }
-  document.body.className = state.role;
+  document.body.className = state.theme || state.role;
   app.innerHTML = (state.role === 'host' ? host() : state.role === 'screen' ? screen() : `<div class="team-score" aria-live="polite">Lagets poäng <strong>${state.score ?? 0}</strong></div>` + team()) + '<button class="exit-button" id="logout">Avsluta</button>';
   document.querySelector('#logout').onclick = async () => { await api('logout', {}); location.href = '/'; };
   if (state.role === 'host') bindHost();
-  if (['dressin','forsta'].includes(state.role)) bindTeam();
+  if (state.teams?.some(t => t.id === state.role)) bindTeam();
   if (state.role === 'screen') document.querySelector('#enableSound')?.addEventListener('click', enableSound);
   mountMaps();
   const video = document.querySelector('#musicVideo');
@@ -27,7 +31,7 @@ function render() {
   }
 }
 function screenKey(data) { return JSON.stringify([data.round,data.phase,data.type,data.points,data.followupNumber,data.question,data.answer,data.video,data.questions,data.answers,data.stage,data.image,data.pins,data.correct,data.result,data.type==='destination'?data.brakes:undefined]); }
-function resultText(result) { if (!result) return ''; const winner=result.winner==='tie'?'Oavgjort':result.winner==='dressin'?'Dressinen':result.winner==='forsta'?'Första klass':'Inget lag'; return `<div class="closest-result"><h2>Närmast: ${esc(winner)}</h2><p>Dressinen: ${result.distances.dressin ?? '–'} km · Första klass: ${result.distances.forsta ?? '–'} km</p></div>`; }
+function resultText(result) { if (!result) return ''; const winner=result.winner==='tie'?'Oavgjort':result.winner?teamLabel(result.winner):'Inget lag'; const distances=activeTeamList().map(t=>`${esc(t.short)}: ${result.distances?.[t.id] ?? '–'} km`).join(' · '); return `<div class="closest-result"><h2>Närmast: ${esc(winner)}</h2><p>${distances}</p></div>`; }
 function mountMaps() {
   if (typeof window === 'undefined' || !window.GameMap) return;
   window.GameMap.cleanup?.();
@@ -54,16 +58,16 @@ function host() {
   let current = `<div class="card"><h2>Pågående spel</h2><p>Väntar på nästa fråga.</p></div>`;
   if (q && g.phase !== 'waiting') {
     current = q.type === 'closest'
-      ? `<div class="card"><div class="eyebrow">Närmast vinner</div><h2>${esc(q.title)}</h2><p>Dressin: ${g.closestAnswers?.dressin ? 'Kartnål låst' : 'Väntar på svar'} · Första klass: ${g.closestAnswers?.forsta ? 'Kartnål låst' : 'Väntar på svar'}</p><div class="actions">${g.closestStage===0 ? `<button id="closestMap" ${!g.closestAnswers?.dressin || !g.closestAnswers?.forsta ? 'disabled' : ''}>Visa karta på storbilden</button>` : ''}${g.closestStage===1 ? '<button id="closestPins">Visa lagens nålar</button>' : ''}${g.closestStage===2 ? '<button id="closestAnswer">Visa rätt plats och resultat</button>' : ''}<button id="wait">Nästa fråga</button></div>${g.closestStage===3 ? resultText(state.closestResult) : ''}</div>`
+      ? `<div class="card"><div class="eyebrow">Närmast vinner</div><h2>${esc(q.title)}</h2><p>${activeTeamList().map(t=>`${esc(t.short)}: ${g.closestAnswers?.[t.id] ? 'Kartnål låst' : 'Väntar på svar'}`).join(' · ')}</p><div class="actions">${g.closestStage===0 ? `<button id="closestMap" ${activeTeamList().some(t=>!g.closestAnswers?.[t.id]) ? 'disabled' : ''}>Visa karta på storbilden</button>` : ''}${g.closestStage===1 ? '<button id="closestPins">Visa lagens nålar</button>' : ''}${g.closestStage===2 ? '<button id="closestAnswer">Visa rätt plats och resultat</button>' : ''}<button id="wait">Nästa fråga</button></div>${g.closestStage===3 ? resultText(state.closestResult) : ''}</div>`
       : q.type === 'music'
-      ? `<div class="card"><div class="eyebrow">Musikfråga · Pågår</div><h2>${esc(q.title)}</h2><p>Videon visas på storbilden tills du visar frågorna.</p>${g.musicShown ? `<div class="eyebrow">Alla musikfrågor</div><ol class="music-questions">${q.musicQuestions.map(item => `<li>${esc(item.question)}<br><small>Facit: ${esc(item.answer)}</small></li>`).join('')}</ol><div class="answers"><div>Dressin: ${g.musicAnswers?.dressin ? esc(g.musicAnswers.dressin) : 'Inget låst svar'}</div><div>Första klass: ${g.musicAnswers?.forsta ? esc(g.musicAnswers.forsta) : 'Inget låst svar'}</div></div>${!g.musicRevealed ? '<button id="revealMusic">Avslöja facit</button>' : ''}` : '<button id="showMusicQuestions">Visa alla musikfrågor</button>'}<button id="wait">Nästa fråga</button></div>`
-      : `<div class="card"><div class="eyebrow">Resmål · ${g.phase === 'revealed' ? 'Avslöjad' : 'Pågår'}</div><h2>${esc(q.title)}</h2><div class="points">${[10,8,6,4,2][g.clueIndex]} poäng</div><p class="clue">${esc(q.clues[g.clueIndex])}</p><div class="actions">${g.phase === 'active' && g.clueIndex < 4 ? '<button id="next">Nästa ledtråd</button>' : ''}${g.phase === 'active' ? '<button id="reveal">Avslöja facit</button>' : '<button id="wait">Nästa fråga</button>'}</div>${g.phase === 'revealed' ? `<p class="answer">Rätt svar: ${esc(q.answer)}</p>` : ''}<div class="answers"><div>Dressin: ${g.answers.dressin ? `${esc(g.answers.dressin.answer)} · ${g.answers.dressin.points} p` : 'Inget låst svar'}</div><div>Första klass: ${g.answers.forsta ? `${esc(g.answers.forsta.answer)} · ${g.answers.forsta.points} p` : 'Inget låst svar'}</div></div></div>`;
+      ? `<div class="card"><div class="eyebrow">Musikfråga · Pågår</div><h2>${esc(q.title)}</h2><p>Videon visas på storbilden tills du visar frågorna.</p>${g.musicShown ? `<div class="eyebrow">Alla musikfrågor</div><ol class="music-questions">${q.musicQuestions.map(item => `<li>${esc(item.question)}<br><small>Facit: ${esc(item.answer)}</small></li>`).join('')}</ol><div class="answers">${answerSlots(id => g.musicAnswers?.[id] ? esc(g.musicAnswers[id]) : 'Inget låst svar')}</div>${!g.musicRevealed ? '<button id="revealMusic">Avslöja facit</button>' : ''}` : '<button id="showMusicQuestions">Visa alla musikfrågor</button>'}<button id="wait">Nästa fråga</button></div>`
+      : `<div class="card"><div class="eyebrow">Resmål · ${g.phase === 'revealed' ? 'Avslöjad' : 'Pågår'}</div><h2>${esc(q.title)}</h2><div class="points">${[10,8,6,4,2][g.clueIndex]} poäng</div><p class="clue">${esc(q.clues[g.clueIndex])}</p><div class="actions">${g.phase === 'active' && g.clueIndex < 4 ? '<button id="next">Nästa ledtråd</button>' : ''}${g.phase === 'active' ? '<button id="reveal">Avslöja facit</button>' : '<button id="wait">Nästa fråga</button>'}</div>${g.phase === 'revealed' ? `<p class="answer">Rätt svar: ${esc(q.answer)}</p>` : ''}<div class="answers">${answerSlots(id => g.answers[id] ? `${esc(g.answers[id].answer)} · ${g.answers[id].points} p` : 'Inget låst svar')}</div></div>`;
   }
   if (q?.type === 'destination' && g.phase === 'revealed') {
     const index = g.followupIndex;
     const nextIndex = Number.isInteger(index) ? index + 1 : 0;
     const followup = Number.isInteger(index) ? q.followups?.[index] : null;
-    current += `<div class="card"><h2>Följdfrågor</h2>${followup ? `<div class="eyebrow">Fråga ${index + 1} på storbilden</div><p class="clue">${esc(followup.question)}</p><p>Facit: <strong>${esc(followup.answer)}</strong></p><div class="answers"><div>Dressin: ${g.followupAnswers?.[index]?.dressin ? esc(g.followupAnswers[index].dressin) : 'Inget låst svar'}</div><div>Första klass: ${g.followupAnswers?.[index]?.forsta ? esc(g.followupAnswers[index].forsta) : 'Inget låst svar'}</div></div>${!g.followupRevealed ? '<button id="revealFollowup">Avslöja följdfrågans facit</button>' : ''}` : '<p>Välj en följdfråga att visa.</p>'}${nextIndex < 2 && q.followups?.[nextIndex]?.question && (index === undefined || g.followupRevealed) ? `<button data-followup="${nextIndex}">Visa följdfråga ${nextIndex + 1}</button>` : ''}</div>`;
+    current += `<div class="card"><h2>Följdfrågor</h2>${followup ? `<div class="eyebrow">Fråga ${index + 1} på storbilden</div><p class="clue">${esc(followup.question)}</p><p>Facit: <strong>${esc(followup.answer)}</strong></p><div class="answers">${answerSlots(id => g.followupAnswers?.[index]?.[id] ? esc(g.followupAnswers[index][id]) : 'Inget låst svar')}</div>${!g.followupRevealed ? '<button id="revealFollowup">Avslöja följdfrågans facit</button>' : ''}` : '<p>Välj en följdfråga att visa.</p>'}${nextIndex < 2 && q.followups?.[nextIndex]?.question && (index === undefined || g.followupRevealed) ? `<button data-followup="${nextIndex}">Visa följdfråga ${nextIndex + 1}</button>` : ''}</div>`;
   }
   const rows = state.questions.map((q,index) => `<div class="question-row"><div><strong>${index + 1}. ${esc(q.title)}</strong><small>${q.type === 'destination' ? 'Resmål' : q.type === 'closest' ? 'Närmast vinner' : 'Musikfråga'}</small></div><div class="actions"><button class="secondary move-button" data-move="${esc(q.id)}" data-direction="-1" aria-label="Flytta ${esc(q.title)} upp" title="Flytta upp" ${index === 0 ? 'disabled' : ''}>↑</button><button class="secondary move-button" data-move="${esc(q.id)}" data-direction="1" aria-label="Flytta ${esc(q.title)} ned" title="Flytta ned" ${index === state.questions.length - 1 ? 'disabled' : ''}>↓</button><button data-start="${esc(q.id)}">Starta</button><button class="secondary" data-edit="${esc(q.id)}">Redigera</button><button class="secondary" data-delete="${esc(q.id)}">Ta bort</button></div></div>`).join('');
   const e = editing && state.questions.find(q => q.id === editing);
@@ -74,7 +78,8 @@ function host() {
     : isMusic
     ? `<label>MP4-video<input name="videoFile" type="file" accept="video/mp4,.mp4" ${e?.video ? '' : 'required'}></label>${e?.video ? '<p>En video är redan sparad. Välj en fil om du vill byta den.</p>' : ''}${[0,1].map(i => `<label>Musikfråga ${i + 1}<textarea name="musicQuestion${i}" required>${esc(e?.musicQuestions?.[i]?.question || '')}</textarea></label><label>Facit till musikfråga ${i + 1}<input name="musicAnswer${i}" required value="${esc(e?.musicQuestions?.[i]?.answer || '')}"></label>`).join('')}`
     : [10,8,6,4,2].map((p,i) => `<label>${p} poäng<textarea name="clue${i}" required>${esc(e?.clues?.[i] || '')}</textarea></label>`).join('') + [0,1].map(i => `<label>Följdfråga ${i + 1}<textarea name="followupQuestion${i}">${esc(e?.followups?.[i]?.question || '')}</textarea></label><label>Facit till följdfråga ${i + 1}<input name="followupAnswer${i}" value="${esc(e?.followups?.[i]?.answer || '')}"></label>`).join('') + `<label>Facit<input name="answer" required value="${esc(e?.answer || '')}"></label>`;
-  return `<div class="layout">${current}<section class="card scoreboard"><h2>Poäng</h2>${[['dressin','Dressin'],['forsta','Första klass']].map(([team,label])=>`<form data-score="${team}"><strong>${label}: ${state.scores[team]} p</strong><input name="delta" type="number" min="1" max="100" value="1" aria-label="Poäng för ${label}" required><button name="sign" value="1">Lägg till</button><button name="sign" value="-1" class="secondary">Dra av</button></form>`).join('')}</section><section class="card"><h2>Frågor</h2>${rows || '<p>Inga frågor ännu.</p>'}<button id="addDest">Nytt resmål</button> <button id="addMusic" class="secondary">Ny musikfråga</button> <button id="addClosest" class="secondary">Ny Närmast vinner</button></section><section class="card" id="editor" ${editing === null ? 'hidden' : ''}><h2>${e ? 'Redigera fråga' : 'Ny fråga'}</h2><form id="questionForm"><input type="hidden" name="id" value="${esc(e?.id || '')}"><input type="hidden" name="type" value="${esc(e?.type || editing?.type || 'destination')}"><label>Titel<input name="title" required value="${esc(e?.title || '')}"></label>${editorFields}<div class="actions"><button>Spara fråga</button><button type="button" id="cancel" class="secondary">Avbryt</button></div></form></section></div>`;
+  const teamPicker = state.phase === 'waiting' ? `<form id="teamsForm"><div class="team-picker">${(state.teams||[]).map(t=>`<label class="team-pick"><input type="checkbox" name="team" value="${esc(t.id)}" ${state.activeTeams.includes(t.id)?'checked':''}> ${esc(t.short)}</label>`).join('')}</div><button>Spara lag</button><p class="hint">Välj 2–5 lag. Kan ändras mellan frågorna.</p></form>` : `<p class="hint">Aktiva lag: ${activeTeamList().map(t=>esc(t.short)).join(', ')}</p>`;
+  return `<div class="layout">${current}<section class="card scoreboard"><h2>Poäng</h2>${teamPicker}${activeTeamList().map(t=>`<form data-score="${t.id}"><strong>${esc(t.short)}: ${state.scores[t.id]} p</strong><input name="delta" type="number" min="1" max="100" value="1" aria-label="Poäng för ${esc(t.short)}" required><button name="sign" value="1">Lägg till</button><button name="sign" value="-1" class="secondary">Dra av</button></form>`).join('')}</section><section class="card"><h2>Frågor</h2>${rows || '<p>Inga frågor ännu.</p>'}<button id="addDest">Nytt resmål</button> <button id="addMusic" class="secondary">Ny musikfråga</button> <button id="addClosest" class="secondary">Ny Närmast vinner</button></section><section class="card" id="editor" ${editing === null ? 'hidden' : ''}><h2>${e ? 'Redigera fråga' : 'Ny fråga'}</h2><form id="questionForm"><input type="hidden" name="id" value="${esc(e?.id || '')}"><input type="hidden" name="type" value="${esc(e?.type || editing?.type || 'destination')}"><label>Titel<input name="title" required value="${esc(e?.title || '')}"></label>${editorFields}<div class="actions"><button>Spara fråga</button><button type="button" id="cancel" class="secondary">Avbryt</button></div></form></section></div>`;
 }
 function team() {
   if (state.phase === 'waiting') return `<section class="hero card"><div class="eyebrow">Redo för avfärd</div><h1>Väntar på nästa fråga</h1><p>Spelledaren startar snart.</p></section>`;
@@ -89,9 +94,9 @@ function team() {
 function screen() {
   const soundControl = audioReady ? '' : `<div class="sound-control"><button id="enableSound" ${audioLoading ? 'disabled' : ''}>${audioLoading ? 'Laddar ljud…' : 'Aktivera ljud'}</button><p>${esc(audioError || 'Klicka en gång för att höra resmålsmusiken och lagens nödbromsar.')}</p></div>`;
   const brakes=state.type==='destination' && state.phase==='active' ? state.brakes||[] : [];
-  const brakeNotice=brakes.length ? `<div class="screen-brake-notices" aria-live="polite">${brakes.map((event,index)=>`<div class="screen-brake-notice ${event.team==='dressin'?'dressin-brake':'forsta-brake'} ${index===brakes.length-1?'latest-brake':''}"><img src="/assets/nodbroms.png" alt=""><div><strong>${event.team==='dressin'?'Dressinen':'Första klass'} har dragit i nödbromsen!</strong></div></div>`).join('')}</div>` : '';
+  const brakeNotice=brakes.length ? `<div class="screen-brake-notices" aria-live="polite">${brakes.map((event,index)=>{const meta=teamMeta(event.team);return `<div class="screen-brake-notice ${(meta?.theme||'dressin')+'-brake'} ${index===brakes.length-1?'latest-brake':''}"><img src="/assets/nodbroms.png" alt=""><div><strong>${esc(meta?.short||event.team)} har dragit i nödbromsen!</strong></div></div>`;}).join('')}</div>` : '';
   if (state.phase === 'waiting') return soundControl + `<section class="screen-card"><div class="eyebrow">På resande fot</div><h1>Väntar på nästa fråga</h1></section>`;
-  if (state.type === 'closest') return soundControl + (state.stage===0 ? `<section class="screen-card closest-screen media-screen"><img class="closest-image" src="${esc(state.image)}" alt="Bild för Närmast vinner"></section>` : `<section class="screen-card closest-screen"><div class="eyebrow">Närmast vinner</div><div id="screenMap" class="map-wrap"></div>${state.stage>=2?'<p class="map-legend"><span class="dressin-dot">● Dressinen</span> <span class="forsta-dot">● Första klass</span>'+ (state.stage>=3?' <span class="correct-dot">● Rätt plats</span>':'')+'</p>':''}${state.stage===3?resultText(state.result):''}</section>`);
+  if (state.type === 'closest') return soundControl + (state.stage===0 ? `<section class="screen-card closest-screen media-screen"><img class="closest-image" src="${esc(state.image)}" alt="Bild för Närmast vinner"></section>` : `<section class="screen-card closest-screen"><div class="eyebrow">Närmast vinner</div><div id="screenMap" class="map-wrap"></div>${state.stage>=2?`<p class="map-legend">${activeTeamList().map(t=>`<span style="color:${esc(t.color)}">● ${esc(t.short)}</span>`).join(' ')}${state.stage>=3?' <span class="correct-dot">● Rätt plats</span>':''}</p>`:''}${state.stage===3?resultText(state.result):''}</section>`);
   if (state.type === 'music') {
     if (state.questions) return soundControl + `<section class="screen-card music-question-screen"><div class="eyebrow">Musikfrågor</div><h1>${state.answers?'Rätta svar':'Vad hörde ni?'}</h1><ol class="screen-music-questions">${state.questions.map((question,index) => `<li><div class="music-question-copy">${esc(question)}</div>${state.answers ? `<div class="screen-music-answer"><span>Rätt svar</span><strong>${esc(state.answers[index])}</strong></div>` : ''}</li>`).join('')}</ol></section>`;
     return soundControl + `<section class="screen-card music-screen media-screen"><video id="musicVideo" src="${esc(state.video)}" autoplay playsinline controls></video><button id="playVideo" class="video-play" hidden>Starta video</button></section>`;
@@ -107,10 +112,10 @@ async function enableSound() {
     audioContext ||= new AudioContext();
     await audioContext.resume();
     render();
-    await Promise.all(['dressin', 'forsta', 'destination'].map(async team => {
-      const response = await fetch(team === 'destination' ? '/assets/resmal-loop.mp3' : '/assets/' + (team === 'forsta' ? 'forstaklass' : team) + '.ogg');
+    await Promise.all(['dressin', 'forsta', 'destination'].map(async key => {
+      const response = await fetch(key === 'destination' ? '/assets/resmal-loop.mp3' : '/assets/' + (key === 'forsta' ? 'forstaklass' : key) + '.ogg');
       if (!response.ok) throw Error('Ljudfilen kunde inte laddas.');
-      soundBuffers[team] = await audioContext.decodeAudioData(await response.arrayBuffer());
+      soundBuffers[key] = await audioContext.decodeAudioData(await response.arrayBuffer());
     }));
     audioReady = true;
     syncDestinationMusic(state);
@@ -139,18 +144,20 @@ function handleBrakes(next, initial = false) {
   for (const event of next.brakes || []) {
     if (seenBrakes.has(event.id)) continue;
     seenBrakes.add(event.id);
-    if (initial || !audioReady || !soundBuffers[event.team]) continue;
+    const soundKey = (next.teams || []).find(t => t.id === event.team)?.sound || event.team;
+    if (initial || !audioReady || !soundBuffers[soundKey]) continue;
     if (audioContext.state !== 'running') {
       audioReady = false; audioError = 'Ljudet pausades av webbläsaren. Aktivera ljud igen.'; continue;
     }
     const source = audioContext.createBufferSource();
-    source.buffer = soundBuffers[event.team]; source.connect(audioContext.destination);
+    source.buffer = soundBuffers[soundKey]; source.connect(audioContext.destination);
     const startsAt = Math.max(audioContext.currentTime, audioNextTime);
     source.start(startsAt); audioNextTime = startsAt + source.buffer.duration;
   }
 }
 function bindHost() {
   for (const [id,stage] of [['closestMap',1],['closestPins',2],['closestAnswer',3]]) document.querySelector('#'+id)?.addEventListener('click',()=>action('game/closest-stage',{stage}));
+  document.querySelector('#teamsForm')?.addEventListener('submit', async event => { event.preventDefault(); await action('teams', { teams: [...new FormData(event.target).getAll('team')] }); });
   document.querySelectorAll('[data-score]').forEach(form=>form.addEventListener('submit',async event=>{event.preventDefault();const amount=Number(new FormData(form).get('delta'));const sign=Number(event.submitter?.value||1);await action('score/add',{team:form.dataset.score,delta:amount*sign});}));
   document.querySelector('#next')?.addEventListener('click', () => action('game/next'));
   document.querySelector('#reveal')?.addEventListener('click', () => action('game/reveal'));

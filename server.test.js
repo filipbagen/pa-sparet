@@ -242,3 +242,55 @@ test('lag kan inte läsa skyddade vyer, facit eller andra lagets svar', async ()
     assert.ok(mapStage.result.distances.dressin < mapStage.result.distances.forsta);
   } finally { await new Promise(resolve => server.close(resolve)); fs.rmSync(testDataDir,{recursive:true,force:true}); }
 });
+
+test('spelledaren väljer 2–5 aktiva lag', async () => {
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const request = async (p, cookie, data) => fetch(base + p, {method:data ? 'POST' : 'GET', headers:{...(cookie ? {Cookie:cookie} : {}), ...(data ? {'Content-Type':'application/json'} : {})}, body:data ? JSON.stringify(data) : undefined});
+  try {
+    const login = async role => { const r = await request('/api/login', null, {code:codes[role]}); assert.equal(r.status,200); return r.headers.get('set-cookie').split(';')[0]; };
+    const host = await login('host');
+    assert.equal((await request('/api/game/wait', host, {})).status, 200);
+    assert.deepEqual((await (await request('/api/state', host)).json()).activeTeams, ['dressin', 'forsta']);
+    assert.equal((await request('/api/teams', host, {teams:['dressin']})).status, 400);
+    assert.equal((await request('/api/teams', host, {teams:['dressin','forsta','x2000','malartag','loket']})).status, 200);
+    assert.equal((await request('/api/login', null, {code:codes.loket})).status, 200);
+    assert.equal((await request('/api/teams', host, {teams:['dressin','forsta','x2000']})).status, 200);
+    assert.equal((await request('/api/login', null, {code:codes.loket})).status, 403);
+    assert.equal((await request('/api/score/add', host, {team:'loket',delta:1})).status, 400);
+    const q = game.questions.find(x => x.type === 'destination');
+    assert.equal((await request('/api/game/start', host, {id:q.id})).status, 200);
+    assert.equal((await request('/api/teams', host, {teams:['dressin','forsta']})).status, 409);
+    assert.equal((await request('/api/game/wait', host, {})).status, 200);
+    assert.equal((await request('/api/teams', host, {teams:['dressin','forsta']})).status, 200);
+  } finally { await new Promise(resolve => server.close(resolve)); }
+});
+
+test('Närmast vinner väntar på nål från alla aktiva lag', async () => {
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const request = async (p, cookie, data) => fetch(base + p, {method:data ? 'POST' : 'GET', headers:{...(cookie ? {Cookie:cookie} : {}), ...(data ? {'Content-Type':'application/json'} : {})}, body:data ? JSON.stringify(data) : undefined});
+  try {
+    const login = async role => { const r = await request('/api/login', null, {code:codes[role]}); assert.equal(r.status,200); return r.headers.get('set-cookie').split(';')[0]; };
+    const host = await login('host');
+    assert.equal((await request('/api/game/wait', host, {})).status, 200);
+    assert.equal((await request('/api/teams', host, {teams:['dressin','forsta','x2000']})).status, 200);
+    const [dressin, forsta, x2000] = [await login('dressin'), await login('forsta'), await login('x2000')];
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/B6kAAAAASUVORK5CYII=','base64');
+    const upload = await fetch(base+'/api/image/upload',{method:'POST',headers:{Cookie:host,'Content-Type':'image/png'},body:png});
+    assert.equal(upload.status,200);
+    const {image} = await upload.json();
+    const saved = await request('/api/question/save',host,{type:'closest',title:'Tre lag pekar',image,viewport:{west:17,east:19,south:59,north:60},answerLat:59.33,answerLon:18.06});
+    assert.equal(saved.status,200);
+    const q = (await saved.json()).questions.find(item => item.title === 'Tre lag pekar');
+    assert.equal((await request('/api/game/start',host,{id:q.id})).status,200);
+    const round = (await (await request('/api/state',dressin)).json()).round;
+    assert.equal((await request('/api/closest-answer',dressin,{round,lat:59.34,lon:18.07})).status,200);
+    assert.equal((await request('/api/closest-answer',forsta,{round,lat:59.8,lon:18.2})).status,200);
+    assert.equal((await request('/api/game/closest-stage',host,{stage:1})).status,409);
+    assert.equal((await request('/api/closest-answer',x2000,{round,lat:59.5,lon:18.1})).status,200);
+    assert.equal((await request('/api/game/closest-stage',host,{stage:1})).status,200);
+    assert.equal((await request('/api/game/wait',host,{})).status,200);
+    assert.equal((await request('/api/teams',host,{teams:['dressin','forsta']})).status,200);
+  } finally { await new Promise(resolve => server.close(resolve)); }
+});

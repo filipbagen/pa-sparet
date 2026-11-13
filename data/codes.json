@@ -1,6 +1,9 @@
 {
   "host": "ledare",
-  "dressin": "dressin",
   "forsta": "förstaklass",
+  "dressin": "dressin",
+  "x2000": "x2000",
+  "malartag": "mälartåg",
+  "loket": "loket",
   "screen": "storbild"
 }

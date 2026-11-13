@@ -84,8 +84,9 @@ async function draw(element,{scope='world',viewport=null,locked=false,pins={},co
       if(!point || !Number.isFinite(point.lat)||!Number.isFinite(point.lon))continue;
       const x=width/2+(point.lon-view.cx)*view.scale,y=height/2+(mercator(point.lat)-view.cy)*view.scale;
       if(x<0||x>width||y<0||y>height)continue;
-      ctx.beginPath();ctx.arc(x,y,15,0,Math.PI*2);ctx.fillStyle=name==='dressin'?'#168b53':name==='forsta'?'#8e44ad':name==='correct'?'#e7bc24':'#d83027';ctx.fill();ctx.strokeStyle='white';ctx.lineWidth=3;ctx.stroke();
-      ctx.fillStyle='white';ctx.font='bold 16px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(name==='dressin'?'D':name==='forsta'?'F':name==='correct'?'✓':'●',x,y);
+      const pinStyle={dressin:['#168b53','D'],forsta:['#8e44ad','F'],x2000:['#c0392b','X'],malartag:['#2980b9','M'],loket:['#d68910','L'],correct:['#e7bc24','✓'],mine:['#d83027','●']}[name]||['#d83027','●'];
+      ctx.beginPath();ctx.arc(x,y,15,0,Math.PI*2);ctx.fillStyle=pinStyle[0];ctx.fill();ctx.strokeStyle='white';ctx.lineWidth=3;ctx.stroke();
+      ctx.fillStyle='white';ctx.font='bold 16px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(pinStyle[1],x,y);
     }
   }
   function refresh(){constrain();paint();report();}

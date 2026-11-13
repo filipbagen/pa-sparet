@@ -26,7 +26,7 @@ npm test         # node --test --test-isolation=none server.test.js client.test.
 - Server listens on `0.0.0.0` so phones/TV on the same Wi-Fi can connect via `http://<LAN-IP>:3000`.
 - `DATA_DIR` env var overrides the `data/` directory (the server tests use a temp dir via this).
 - `server.test.js` starts a real HTTP listener, so it fails with `EPERM` in sandboxes that forbid binding ports; that is an environment limit, not a bug. `client.test.js` runs `public/app.js` in a `node:vm` context with fake `document`/`fetch`, with no browser.
-- Login: users type only an access code (`data/codes.json`, defaults `ledare`, `dressin`, `förstaklass`, `storbild`); the code decides the role. All four must be distinct and non-empty or the server refuses to boot. Sessions are in-memory, so restarting logs everyone out.
+- Login: users type only an access code (`data/codes.json`; defaults include `ledare`, `förstaklass`, `dressin`, `x2000`, `mälartåg`, `loket`, `storbild`); the code decides the role. All role codes must be distinct and non-empty or the server refuses to boot. Inactive teams cannot log in. Sessions are in-memory, so restarting logs everyone out.
 
 ## Structure
 
@@ -66,6 +66,6 @@ server.test.js / client.test.js
 
 - Match the existing terse, dense style when editing `server.js`/`app.js`; don't reformat wholesale.
 - `data/` is **committed to git**, including `codes.json`, `game.json` (live game state, which will show as modified after any play session) and ~240 MB of uploaded media. Be careful not to commit accidental game-state churn or `.DS_Store`; `.gitignore` only lists `node_modules/`.
-- Scoring is manual for `closest` and for follow-up/music answers; the server only auto-tracks the points *offered* for a destination answer (`answers[role].points`), and the host awards totals through `/api/score/add` (±1–100, never below 0).
+- Scoring is manual for `closest` and for follow-up/music answers; the server only auto-tracks the points *offered* for a destination answer (`answers[role].points`), and the host awards totals through `/api/score/add` (±1–100, never below 0). Host sets `activeTeams` (2–5 of the five catalog teams) via `POST /api/teams` while `phase === 'waiting'`.
 - Only one team can pull the brake per clue level; `next` clue resets `brakes`.
 - Intended for a trusted LAN over plain HTTP; there is no rate limiting or HTTPS.

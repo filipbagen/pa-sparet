@@ -1,6 +1,6 @@
 # På resande fot
 
-En laglek för fyra samtidiga vyer: spelledare, Lag Dressin, Lag Första klass och storbild. Frågor och spelstatus sparas i `data/game.json`. Exempelfrågorna kan redigeras eller tas bort från spelledarvyn.
+En laglek för spelledare, storbild och upp till fem lag (Första klass, Dressinen, X2000, Mälartåg, Loket). Spelledaren väljer 2–5 aktiva lag mellan frågorna. Frågor och spelstatus sparas i `data/game.json`. Exempelfrågorna kan redigeras eller tas bort från spelledarvyn.
 
 ## Installera och starta i VS Code
 
@@ -8,7 +8,7 @@ En laglek för fyra samtidiga vyer: spelledare, Lag Dressin, Lag Första klass o
 2. Öppna projektmappen i VS Code.
 3. Öppna **Terminal → New Terminal** och kör `npm start`.
 4. Öppna `http://localhost:3000` i webbläsaren.
-5. Ange enbart åtkomstkoden. Servern väljer rätt vy automatiskt: `dressin` för Lag Dressin, `förstaklass` för Lag Första klass, `ledare` för spelledaren och `storbild` för storbilden.
+5. Ange enbart åtkomstkoden. Servern väljer rätt vy automatiskt (`ledare`, `förstaklass`, `dressin`, `x2000`, `mälartåg`, `loket`, `storbild`). Bara aktiva lag kan logga in.
 6. Logga in på respektive enhet med dess kod. Varje enhet får en egen inloggning. Koderna finns i `data/codes.json`.
 
 Inga `npm install`-steg behövs; appen använder bara Node.js inbyggda moduler.
@@ -25,7 +25,7 @@ Servern lyssnar på alla lokala nätverksgränssnitt. Byt port med `PORT=...` i 
 ## Byt åtkomstkoder
 
 1. Stoppa servern med Ctrl+C.
-2. Öppna `data/codes.json` och ersätt värdet för varje vy med en egen, unik kod. `host` är spelledare, `dressin` och `forsta` är lagen och `screen` är storbild. Alla fyra koder måste vara olika och får inte vara tomma, eftersom koden avgör rollen.
+2. Öppna `data/codes.json` och ersätt värdet för varje vy med en egen, unik kod. `host` är spelledare, `screen` är storbild och övriga nycklar är lagen. Alla koder måste vara olika och får inte vara tomma, eftersom koden avgör rollen.
 3. Spara filen och kör `npm start` igen. Alla tidigare inloggningar upphör vid omstart.
 
 Mappen `data/` ingår i repot, inklusive åtkomstkoder, frågor, spelstatus och uppladdade medier. Speldata överlever omstart. För säkerhetskopia kopierar du `data/game.json` medan servern är stoppad.
@@ -36,7 +36,7 @@ Spelledaren väljer **Starta** för en fråga. Resmål börjar på 10 poäng och
 
 Frågor läggs till med **Nytt resmål**, **Ny musikfråga** eller **Ny Närmast vinner**. Alla fem resmålsledtrådar och facit måste fyllas i. Exempelfrågorna om Göteborg och ABBA är bara startinnehåll och kan bytas ut. Musikexemplet behöver en MP4-video innan det kan startas.
 
-Spelledaren ändrar ordningen i frågelistan med knapparna **↑** och **↓** bredvid varje fråga. Ordningen sparas och finns kvar efter omstart. I rutan **Poäng** kan spelledaren när som helst lägga till eller dra av poäng för respektive lag. Poängställningen sparas tillsammans med spelet.
+Spelledaren ändrar ordningen i frågelistan med knapparna **↑** och **↓** bredvid varje fråga. Ordningen sparas och finns kvar efter omstart. I rutan **Poäng** kan spelledaren när som helst lägga till eller dra av poäng för respektive lag, och mellan frågorna kryssa i vilka 2–5 lag som spelar. Poängställningen sparas tillsammans med spelet.
 
 Lagens vyer visar ingen frågetitel eller ledtråd. Varje lag ser sin egen aktuella totalpoäng live. Under ett resmål visas frågans poängnivå, ”Vart är vi påväg?” och nödbromsen. När laget drar bromsen öppnas svarsfältet. Svaret och poängnivån låses när svaret sparas. Rätt svar visas först vid avslöjandet.
 
@@ -52,7 +52,7 @@ För en musikfråga skriver spelledaren en titel, laddar upp en MP4-fil (högst 
 
 Spelledaren väljer **Ny Närmast vinner**, skriver en titel och laddar upp en PNG-, JPG- eller WebP-bild (högst 20 MB). Zooma och flytta kartan direkt till precis det utsnitt lagen ska få se; inga förvalda områden behöver väljas. Klicka på rätt plats inom utsnittet och spara frågan. Det synliga kartutsnittet sparas med frågan och visas för båda lagen och på storbilden. Lagen kan zooma in och flytta kartan inom utsnittet, men inte utanför det. Kartan använder Natural Earths riktiga kustlinjer utan ortnamn, platsetiketter eller landgränser. Kartdatan finns lokalt i `public/assets/land.geojson`, så de anslutna enheterna behöver inte internet för kartan.
 
-När frågan startar visas bilden på storbilden. Lagen ser det valda kartområdet, sätter varsin nål och låser sitt svar. När båda har svarat kan spelledaren klicka **Visa karta på storbilden**, sedan **Visa lagens nålar** och slutligen **Visa rätt plats och resultat**. Avstånden räknas som kortaste avstånd längs jordytan och visas i kilometer. Vid lika avstånd inom 0,1 km visas oavgjort. Resultatet ger inga poäng automatiskt; spelledaren använder poängrutan för att dela ut poäng.
+När frågan startar visas bilden på storbilden. Lagen ser det valda kartområdet, sätter varsin nål och låser sitt svar. När alla aktiva lag har svarat kan spelledaren klicka **Visa karta på storbilden**, sedan **Visa lagens nålar** och slutligen **Visa rätt plats och resultat**. Avstånden räknas som kortaste avstånd längs jordytan och visas i kilometer. Vid lika avstånd inom 0,1 km visas oavgjort. Resultatet ger inga poäng automatiskt; spelledaren använder poängrutan för att dela ut poäng.
 
 Storbilden spelar den medföljande filen `public/assets/resmal-loop.mp3` i en slinga från det att spelledaren startar ett resmål. Låten pausas vid bromsning och fortsätter vid nästa ledtråd. Den stoppas när resmålet avslöjas eller en annan fråga startar. Klicka **Aktivera ljud** på storbilden innan spelet börjar; webbläsaren kräver en användarinteraktion innan den kan spela ljud automatiskt.
 

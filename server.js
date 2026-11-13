@@ -12,8 +12,20 @@ const codeFile = path.join(dataDir, 'codes.json');
 const mediaDir = path.join(dataDir, 'media');
 fs.mkdirSync(dataDir, { recursive: true });
 fs.mkdirSync(mediaDir, { recursive: true });
-const roles = ['host', 'dressin', 'forsta', 'screen'];
-const labels = { host: 'Spelledare', dressin: 'Lag Dressin', forsta: 'Lag Första klass', screen: 'Storbild' };
+const TEAMS = [
+  { id: 'forsta', label: 'Lag Första klass', short: 'Första klass', theme: 'forsta', sound: 'forsta', letter: 'F', color: '#8e44ad' },
+  { id: 'dressin', label: 'Lag Dressin', short: 'Dressinen', theme: 'dressin', sound: 'dressin', letter: 'D', color: '#168b53' },
+  { id: 'x2000', label: 'Lag X2000', short: 'X2000', theme: 'forsta', sound: 'forsta', letter: 'X', color: '#c0392b' },
+  { id: 'malartag', label: 'Lag Mälartåg', short: 'Mälartåg', theme: 'dressin', sound: 'dressin', letter: 'M', color: '#2980b9' },
+  { id: 'loket', label: 'Lag Loket', short: 'Loket', theme: 'forsta', sound: 'forsta', letter: 'L', color: '#d68910' },
+];
+const teamIds = TEAMS.map(t => t.id);
+const isTeam = role => teamIds.includes(role);
+const teamById = id => TEAMS.find(t => t.id === id);
+const roles = ['host', ...teamIds, 'screen'];
+const labels = { host: 'Spelledare', screen: 'Storbild', ...Object.fromEntries(TEAMS.map(t => [t.id, t.label])) };
+const defaultCodes = { host: 'ledare', forsta: 'förstaklass', dressin: 'dressin', x2000: 'x2000', malartag: 'mälartåg', loket: 'loket', screen: 'storbild' };
+const teamPublic = () => TEAMS.map(({ id, short, theme, sound, letter, color }) => ({ id, short, theme, sound, letter, color }));
 const sample = [
   { id: crypto.randomUUID(), type: 'destination', title: 'Exempelresa 1', clues: [
     'Vi reser mot en stad där salt luft möter en lång tradition av handel.',
@@ -36,27 +48,38 @@ for (const q of db.questions) {
 }
 if (!fs.existsSync(dataFile) || migrated) save();
 let codes;
-if (fs.existsSync(codeFile)) codes = JSON.parse(fs.readFileSync(codeFile, 'utf8'));
-else { codes = { host: 'ledare', dressin: 'dressin', forsta: 'förstaklass', screen: 'storbild' }; fs.writeFileSync(codeFile, JSON.stringify(codes, null, 2)); }
+if (fs.existsSync(codeFile)) codes = { ...defaultCodes, ...JSON.parse(fs.readFileSync(codeFile, 'utf8')) };
+else codes = { ...defaultCodes };
+fs.writeFileSync(codeFile, JSON.stringify(Object.fromEntries(roles.map(role => [role, codes[role]])), null, 2));
 const normalizeCode = code => code.trim().normalize('NFC');
 if (roles.some(role => typeof codes[role] !== 'string' || !normalizeCode(codes[role])) || new Set(roles.map(role => normalizeCode(codes[role]))).size !== roles.length) {
-  throw new Error('Alla fyra roller i data/codes.json måste ha olika, icke-tomma koder.');
+  throw new Error('Alla roller i data/codes.json måste ha olika, icke-tomma koder.');
 }
 const sessions = new Map();
 const streams = new Set();
 const scores = [10, 8, 6, 4, 2];
 const mapScopes = { sweden:{south:55,north:70,west:10,east:25}, europe:{south:35,north:72,west:-12,east:35}, world:{south:-60,north:85,west:-180,east:180} };
-db.scores ||= {dressin:0,forsta:0};
+db.scores ||= {};
+for (const id of teamIds) { if (db.scores[id] == null) { db.scores[id] = 0; migrated = true; } }
+function activeTeams() {
+  const picked = [...new Set((Array.isArray(db.activeTeams) ? db.activeTeams : []).filter(isTeam))];
+  return picked.length >= 2 && picked.length <= 5 ? picked : ['dressin', 'forsta'];
+}
+if (!Array.isArray(db.activeTeams) || db.activeTeams.length !== activeTeams().length || db.activeTeams.some((id, i) => id !== activeTeams()[i])) {
+  db.activeTeams = activeTeams();
+  migrated = true;
+}
+if (migrated) save();
 const getQuestion = () => db.questions.find(q => q.id === db.game.questionId);
 const clean = s => String(s ?? '').trim().slice(0, 3000);
 const inScope = (lat,lon,scope) => Number.isFinite(lat) && Number.isFinite(lon) && lat >= mapScopes[scope].south && lat <= mapScopes[scope].north && lon >= mapScopes[scope].west && lon <= mapScopes[scope].east;
 const validViewport = (v,scope) => v && ['west','east','south','north'].every(key => typeof v[key] === 'number' && Number.isFinite(v[key])) && v.west < v.east && v.south < v.north && inScope(v.south,v.west,scope) && inScope(v.north,v.east,scope);
 const inViewport = (lat,lon,v) => lat >= v.south && lat <= v.north && lon >= v.west && lon <= v.east;
 function distanceKm(a,b) { const toRad = n => n * Math.PI / 180, dLat=toRad(b.lat-a.lat), dLon=toRad(b.lon-a.lon); const h=Math.sin(dLat/2)**2+Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLon/2)**2; return Math.round(6371.0088*2*Math.atan2(Math.sqrt(h),Math.sqrt(1-h))*10)/10; }
-function closestResult(g,q) { const target={lat:q.answerLat,lon:q.answerLon}; const distances=Object.fromEntries(['dressin','forsta'].filter(team=>g.closestAnswers?.[team]).map(team=>[team,distanceKm(g.closestAnswers[team],target)])); const entries=Object.entries(distances).sort((a,b)=>a[1]-b[1]); return {distances,winner:entries.length < 2 ? entries[0]?.[0] || null : Math.abs(entries[0][1]-entries[1][1]) < .1 ? 'tie' : entries[0][0]}; }
+function closestResult(g,q) { const target={lat:q.answerLat,lon:q.answerLon}; const distances=Object.fromEntries(activeTeams().filter(team=>g.closestAnswers?.[team]).map(team=>[team,distanceKm(g.closestAnswers[team],target)])); const entries=Object.entries(distances).sort((a,b)=>a[1]-b[1]); return {distances,winner:entries.length < 2 ? entries[0]?.[0] || null : Math.abs(entries[0][1]-entries[1][1]) < .1 ? 'tie' : entries[0][0]}; }
 function view(role) {
-  const g = db.game, q = getQuestion(), active = !!q && g.phase !== 'waiting';
-  const base = { role, label: labels[role], phase: g.phase, round: g.round, ...(['dressin','forsta'].includes(role) ? {score:db.scores[role]} : {}) };
+  const g = db.game, q = getQuestion(), active = !!q && g.phase !== 'waiting', teams = activeTeams();
+  const base = { role, label: labels[role], phase: g.phase, round: g.round, teams: teamPublic(), activeTeams: teams, ...(isTeam(role) ? { score: db.scores[role], theme: teamById(role).theme } : {}) };
   if (role === 'host') return { ...base, game: g, scores:db.scores, questions: db.questions, activeQuestion: q || null, closestResult:q?.type==='closest' && g.closestStage === 3 ? closestResult(g,q) : undefined };
   if (!active) return base;
   if (q.type === 'closest') {
@@ -146,6 +169,7 @@ async function handler(req, res) {
     const input = await body(req);
     const matchedRole = typeof input.code === 'string' && roles.find(role => normalizeCode(input.code) === normalizeCode(codes[role]));
     if (!matchedRole) return send(res, 401, { error: 'Fel kod.' });
+    if (isTeam(matchedRole) && !activeTeams().includes(matchedRole)) return send(res, 403, { error: 'Laget är inte aktivt i den här omgången.' });
     const sid = crypto.randomBytes(32).toString('hex'); sessions.set(sid, { role: matchedRole });
     return send(res, 200, { role: matchedRole }, { 'Set-Cookie': `sid=${sid}; HttpOnly; SameSite=Strict; Path=/` });
   }
@@ -211,7 +235,7 @@ async function handler(req, res) {
     }
     if (req.method !== 'POST' || req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) return send(res, 403, { error: 'Ingen åtkomst.' });
     const input = await body(req);
-    if (p === '/api/brake' && ['dressin', 'forsta'].includes(role)) {
+    if (p === '/api/brake' && activeTeams().includes(role)) {
       const g = db.game;
       if (g.phase !== 'active' || getQuestion()?.type !== 'destination' || input.round !== g.round || g.answers[role] || (Object.keys(g.brakes||{}).length && !g.brakes?.[role])) return send(res, 409, { error: 'Nödbromsen är redan dragen på den här poängnivån.' });
       g.brakes ||= {};
@@ -221,7 +245,7 @@ async function handler(req, res) {
       }
       return send(res, 200, view(role));
     }
-    if (p === '/api/answer' && ['dressin', 'forsta'].includes(role)) {
+    if (p === '/api/answer' && activeTeams().includes(role)) {
       const g = db.game, q = getQuestion();
       if (g.phase !== 'active' || !q || g.answers[role]) return send(res, 409, { error: 'Svaret är redan låst eller frågan är stängd.' });
       if (q.type === 'destination' && !g.brakes?.[role]) return send(res, 409, { error: 'Dra nödbromsen innan ni svarar.' });
@@ -230,7 +254,7 @@ async function handler(req, res) {
       g.answers[role] = { answer, points: q.type === 'destination' ? scores[g.clueIndex] : 1 };
       save(); broadcast(); return send(res, 200, view(role));
     }
-    if (p === '/api/followup-answer' && ['dressin', 'forsta'].includes(role)) {
+    if (p === '/api/followup-answer' && activeTeams().includes(role)) {
       const g = db.game, index = g.followupIndex;
       if (g.phase !== 'revealed' || getQuestion()?.type !== 'destination' || !Number.isInteger(index) || input.round !== g.round || input.index !== index || g.followupRevealed || !getQuestion()?.followups?.[index]?.question || g.followupAnswers?.[index]?.[role]) return send(res, 409, { error: 'Följdfrågan är stängd eller svaret redan låst.' });
       const answer = clean(input.answer).slice(0, 200);
@@ -240,7 +264,7 @@ async function handler(req, res) {
       g.followupAnswers[index][role] = answer;
       save(); broadcast(); return send(res, 200, view(role));
     }
-    if (p === '/api/music-answer' && ['dressin','forsta'].includes(role)) {
+    if (p === '/api/music-answer' && activeTeams().includes(role)) {
       const g = db.game;
       if (g.phase !== 'active' || getQuestion()?.type !== 'music' || !g.musicShown || input.round !== g.round || g.musicRevealed || g.musicAnswers?.[role]) return send(res,409,{error:'Musikfrågan är stängd eller svaret redan låst.'});
       const answer = clean(input.answer).slice(0,2000);
@@ -248,7 +272,7 @@ async function handler(req, res) {
       g.musicAnswers ||= {}; g.musicAnswers[role] = answer;
       save(); broadcast(); return send(res,200,view(role));
     }
-    if (p === '/api/closest-answer' && ['dressin','forsta'].includes(role)) {
+    if (p === '/api/closest-answer' && activeTeams().includes(role)) {
       const g=db.game,q=getQuestion(),lat=Number(input.lat),lon=Number(input.lon);
       if (g.phase!=='active' || q?.type!=='closest' || input.round!==g.round || g.closestAnswers?.[role]) return send(res,409,{error:'Svaret är redan låst eller frågan är stängd.'});
       if (input.lat == null || input.lon == null || input.lat === '' || input.lon === '' || !inScope(lat,lon,q.scope) || !inViewport(lat,lon,q.viewport || mapScopes[q.scope])) return send(res,400,{error:'Sätt kartnålen inom det sparade kartutsnittet.'});
@@ -256,9 +280,15 @@ async function handler(req, res) {
       save(); broadcast(); return send(res,200,view(role));
     }
     if (role !== 'host') return send(res, 403, { error: 'Ingen åtkomst.' });
+    if (p === '/api/teams') {
+      const teams = Array.isArray(input.teams) ? [...new Set(input.teams.filter(isTeam))] : [];
+      if (db.game.phase !== 'waiting') return send(res, 409, { error: 'Lagen kan bara ändras mellan frågorna.' });
+      if (teams.length < 2 || teams.length > 5) return send(res, 400, { error: 'Välj mellan 2 och 5 lag.' });
+      db.activeTeams = teams; save(); broadcast(); return send(res, 200, view(role));
+    }
     if (p === '/api/score/add') {
       const delta=Number(input.delta);
-      if (!['dressin','forsta'].includes(input.team) || !Number.isInteger(delta) || delta===0 || Math.abs(delta)>100 || db.scores[input.team]+delta<0) return send(res,400,{error:'Ange lag och 1–100 poäng. Poängen kan inte bli negativa.'});
+      if (!activeTeams().includes(input.team) || !Number.isInteger(delta) || delta===0 || Math.abs(delta)>100 || db.scores[input.team]+delta<0) return send(res,400,{error:'Ange lag och 1–100 poäng. Poängen kan inte bli negativa.'});
       db.scores[input.team]+=delta; save(); broadcast(); return send(res,200,view(role));
     }
     if (p === '/api/question/save') {
@@ -298,7 +328,7 @@ async function handler(req, res) {
       g.musicRevealed = true;
     } else if (p === '/api/game/closest-stage') {
       const stage=Number(input.stage);
-      if (g.phase!=='active' || getQuestion()?.type!=='closest' || ![1,2,3].includes(stage) || stage!==(g.closestStage||0)+1 || (stage===1 && (!g.closestAnswers?.dressin || !g.closestAnswers?.forsta))) return send(res,409,{error:'Kartan kan inte visas i det steget ännu.'});
+      if (g.phase!=='active' || getQuestion()?.type!=='closest' || ![1,2,3].includes(stage) || stage!==(g.closestStage||0)+1 || (stage===1 && !activeTeams().every(team => g.closestAnswers?.[team]))) return send(res,409,{error:'Kartan kan inte visas i det steget ännu.'});
       g.closestStage=stage;
     } else if (p === '/api/game/followup') {
       const index = Number(input.index);
