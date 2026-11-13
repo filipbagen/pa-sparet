@@ -76,22 +76,24 @@ const inScope = (lat,lon,scope) => Number.isFinite(lat) && Number.isFinite(lon) 
 const validViewport = (v,scope) => v && ['west','east','south','north'].every(key => typeof v[key] === 'number' && Number.isFinite(v[key])) && v.west < v.east && v.south < v.north && inScope(v.south,v.west,scope) && inScope(v.north,v.east,scope);
 const inViewport = (lat,lon,v) => lat >= v.south && lat <= v.north && lon >= v.west && lon <= v.east;
 function distanceKm(a,b) { const toRad = n => n * Math.PI / 180, dLat=toRad(b.lat-a.lat), dLon=toRad(b.lon-a.lon); const h=Math.sin(dLat/2)**2+Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLon/2)**2; return Math.round(6371.0088*2*Math.atan2(Math.sqrt(h),Math.sqrt(1-h))*10)/10; }
-function closestResult(g,q) { const target={lat:q.answerLat,lon:q.answerLon}; const distances=Object.fromEntries(activeTeams().filter(team=>g.closestAnswers?.[team]).map(team=>[team,distanceKm(g.closestAnswers[team],target)])); const entries=Object.entries(distances).sort((a,b)=>a[1]-b[1]); return {distances,winner:entries.length < 2 ? entries[0]?.[0] || null : Math.abs(entries[0][1]-entries[1][1]) < .1 ? 'tie' : entries[0][0]}; }
+const CLOSEST_MS = Number(process.env.CLOSEST_MS) || 10000;
+function closestResult(g,q) { const target={lat:q.answerLat,lon:q.answerLon}; const distances=Object.fromEntries(activeTeams().filter(team=>g.closestAnswers?.[team]).map(team=>[team,distanceKm(g.closestAnswers[team],target)])); const entries=Object.entries(distances).sort((a,b)=>a[1]-b[1]); const winners=entries.filter(item=>item[1]-entries[0][1] < .1).map(item=>item[0]); return {distances,winners,points:q.points || 10,winner:!entries.length ? null : winners.length > 1 ? 'tie' : entries[0][0]}; }
+const closestRemaining = g => (g.closestStage || 0) === 1 ? Math.max(0, (g.closestEndsAt || 0) - Date.now()) : 0;
 function view(role) {
   const g = db.game, q = getQuestion(), active = !!q && g.phase !== 'waiting', teams = activeTeams();
   const base = { role, label: labels[role], phase: g.phase, round: g.round, teams: teamPublic(), activeTeams: teams, ...(isTeam(role) ? { score: db.scores[role], theme: teamById(role).theme } : {}) };
-  if (role === 'host') return { ...base, game: g, scores:db.scores, questions: db.questions, activeQuestion: q || null, closestResult:q?.type==='closest' && g.closestStage === 3 ? closestResult(g,q) : undefined };
+  if (role === 'host') return { ...base, game: g, scores:db.scores, questions: db.questions, activeQuestion: q || null, remainingMs: closestRemaining(g), closestResult:q?.type==='closest' && g.closestStage === 3 ? closestResult(g,q) : undefined };
   if (!active) return base;
   if (q.type === 'closest') {
     const scope=q.scope;
     if (role === 'screen') {
       const stage=g.closestStage || 0;
-      return { ...base, type:'closest', scope, viewport:q.viewport || mapScopes[scope], stage, image:stage === 0 ? `/api/image/${q.image}` : undefined,
+      return { ...base, type:'closest', scope, viewport:q.viewport || mapScopes[scope], stage, image:q.image ? `/api/image/${q.image}` : undefined, clue:q.clue || undefined, remainingMs:closestRemaining(g),
         pins:stage >= 2 ? g.closestAnswers : undefined,
         correct:stage >= 3 ? {lat:q.answerLat,lon:q.answerLon} : undefined,
         result:stage >= 3 ? closestResult(g,q) : undefined };
     }
-    return { ...base, type:'closest', scope, viewport:q.viewport || mapScopes[scope], pin:g.closestAnswers?.[role] || null,
+    return { ...base, type:'closest', scope, viewport:q.viewport || mapScopes[scope], stage:g.closestStage || 0, remainingMs:closestRemaining(g), pin:g.closestAnswers?.[role] || null,
       correct:g.closestStage === 3 ? {lat:q.answerLat,lon:q.answerLon} : undefined,
       result:g.closestStage === 3 ? closestResult(g,q) : undefined };
   }
@@ -152,9 +154,9 @@ function validQuestion(input) {
     if (q.musicQuestions.length !== 2 || q.musicQuestions.some(item => !item.question || !item.answer)) throw new Error('Fyll i två musikfrågor med facit.');
   }
   if (type === 'closest') {
-    q.image = clean(input.image); q.scope = 'world';
+    q.image = clean(input.image); q.clue = clean(input.clue).slice(0, 300); q.points = Number(input.points ?? 10); q.scope = 'world';
     q.answerLat = Number(input.answerLat); q.answerLon = Number(input.answerLon);
-    if (!/^[a-f0-9-]{36}\.(png|jpg|webp)$/.test(q.image) || !fs.existsSync(path.join(mediaDir,q.image)) || input.answerLat === '' || input.answerLon === '' || input.answerLat == null || input.answerLon == null || !inScope(q.answerLat,q.answerLon,q.scope)) throw new Error('Välj bild och rätt plats på kartan.');
+    if ((!q.image && !q.clue) || (q.image && (!/^[a-f0-9-]{36}\.(png|jpg|webp)$/.test(q.image) || !fs.existsSync(path.join(mediaDir,q.image)))) || !Number.isInteger(q.points) || q.points < 1 || q.points > 100 || input.answerLat === '' || input.answerLon === '' || input.answerLat == null || input.answerLon == null || !inScope(q.answerLat,q.answerLon,q.scope)) throw new Error('Ange ledtråd (bild och/eller text), 1–100 poäng och rätt plats på kartan.');
     q.viewport = input.viewport;
     if (!validViewport(q.viewport,q.scope) || !inViewport(q.answerLat,q.answerLon,q.viewport)) throw new Error('Kartutsnittet måste ligga inom området och innehålla rätt plats.');
   }
@@ -192,7 +194,7 @@ async function handler(req, res) {
   }
   if (p.startsWith('/api/image/') && req.method === 'GET') {
     const file=p.slice('/api/image/'.length), q=getQuestion();
-    if (role!=='screen' || q?.type!=='closest' || q.image!==file || db.game.phase!=='active' || (db.game.closestStage||0)!==0 || !/^[a-f0-9-]{36}\.(png|jpg|webp)$/.test(file)) return send(res,403,{error:'Ingen åtkomst.'});
+    if (role!=='screen' || q?.type!=='closest' || q.image!==file || db.game.phase!=='active' || !/^[a-f0-9-]{36}\.(png|jpg|webp)$/.test(file)) return send(res,403,{error:'Ingen åtkomst.'});
     const target=path.join(mediaDir,file);
     if (!fs.existsSync(target)) return send(res,404,{error:'Bilden finns inte.'});
     const mime=file.endsWith('.png')?'image/png':file.endsWith('.jpg')?'image/jpeg':'image/webp';
@@ -274,7 +276,7 @@ async function handler(req, res) {
     }
     if (p === '/api/closest-answer' && activeTeams().includes(role)) {
       const g=db.game,q=getQuestion(),lat=Number(input.lat),lon=Number(input.lon);
-      if (g.phase!=='active' || q?.type!=='closest' || input.round!==g.round || g.closestAnswers?.[role]) return send(res,409,{error:'Svaret är redan låst eller frågan är stängd.'});
+      if (g.phase!=='active' || q?.type!=='closest' || input.round!==g.round || g.closestStage!==1 || Date.now() > (g.closestEndsAt || 0) + 500) return send(res,409,{error:'Tiden är ute eller nålen kan inte flyttas nu.'});
       if (input.lat == null || input.lon == null || input.lat === '' || input.lon === '' || !inScope(lat,lon,q.scope) || !inViewport(lat,lon,q.viewport || mapScopes[q.scope])) return send(res,400,{error:'Sätt kartnålen inom det sparade kartutsnittet.'});
       g.closestAnswers ||= {}; g.closestAnswers[role]={lat,lon};
       save(); broadcast(); return send(res,200,view(role));
@@ -312,7 +314,7 @@ async function handler(req, res) {
       const startQuestion = db.questions.find(q => q.id === input.id);
       if (!startQuestion) return send(res, 404, { error: 'Frågan finns inte.' });
       if (startQuestion.type === 'music' && (!startQuestion.video || startQuestion.musicQuestions?.length !== 2)) return send(res,409,{error:'Redigera musikfrågan och lägg till MP4-video samt två frågor först.'});
-      db.game = { phase: 'active', questionId: input.id, clueIndex: 0, answers: {}, followupAnswers: {}, musicAnswers: {}, closestAnswers: {}, closestStage: 0, brakes: {}, round: g.round + 1 };
+      db.game = { phase: 'active', questionId: input.id, clueIndex: 0, answers: {}, followupAnswers: {}, musicAnswers: {}, closestAnswers: {}, closestStage: 0, closestEndsAt: 0, closestScored: false, brakes: {}, round: g.round + 1 };
     } else if (p === '/api/game/next') {
       if (g.phase !== 'active' || getQuestion()?.type !== 'destination' || g.clueIndex >= 4) return send(res, 409, { error: 'Ingen ytterligare ledtråd.' });
       g.clueIndex++;
@@ -328,8 +330,11 @@ async function handler(req, res) {
       g.musicRevealed = true;
     } else if (p === '/api/game/closest-stage') {
       const stage=Number(input.stage);
-      if (g.phase!=='active' || getQuestion()?.type!=='closest' || ![1,2,3].includes(stage) || stage!==(g.closestStage||0)+1 || (stage===1 && !activeTeams().every(team => g.closestAnswers?.[team]))) return send(res,409,{error:'Kartan kan inte visas i det steget ännu.'});
+      const q=getQuestion();
+      if (g.phase!=='active' || q?.type!=='closest' || ![1,2,3].includes(stage) || stage!==(g.closestStage||0)+1 || (stage===2 && Date.now() < (g.closestEndsAt || 0))) return send(res,409,{error:'Kartan kan inte visas i det steget ännu.'});
       g.closestStage=stage;
+      if (stage===1) { g.closestEndsAt=Date.now()+CLOSEST_MS; const round=g.round; setTimeout(() => { const cur=db.game; if (cur.round===round && cur.phase==='active' && cur.closestStage===1) { cur.closestStage=2; save(); broadcast(); } }, CLOSEST_MS+50).unref(); }
+      if (stage===3 && !g.closestScored) { g.closestScored=true; const result=closestResult(g,q); for (const team of result.winners) db.scores[team]+=result.points; }
     } else if (p === '/api/game/followup') {
       const index = Number(input.index);
       const followup = getQuestion()?.followups?.[index];

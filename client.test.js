@@ -12,6 +12,7 @@ const teams = [
 ];
 const activeTeams = ['dressin', 'forsta'];
 
+const browserTimers = { setInterval() {}, performance: { now: () => 0 } };
 test('startsidan ritas även när webbläsaren reserverar window.top', async () => {
   const app = { innerHTML: '' };
   const requests = [];
@@ -28,7 +29,7 @@ test('startsidan ritas även när webbläsaren reserverar window.top', async () 
   // window.top är en skrivskyddad, icke-konfigurerbar egenskap i webbläsaren.
   Object.defineProperty(context, 'top', { value: context, writable: false, configurable: false });
   const source = fs.readFileSync(path.join(__dirname, 'public/app.js'), 'utf8');
-  assert.doesNotThrow(() => vm.runInNewContext(source, context));
+  assert.doesNotThrow(() => vm.runInNewContext(source, Object.assign(context, browserTimers)));
   await new Promise(resolve => setImmediate(resolve));
   assert.match(app.innerHTML, /id="login"/);
   assert.match(app.innerHTML, /Åtkomstkod/);
@@ -55,7 +56,7 @@ test('storbilden spelar rätt bromsljud en gång per händelse', async () => {
       createBufferSource() { const source = {connect(){},disconnect(){},stop(){stopped.push(source.buffer.file);},start(time,offset){played.push({file:source.buffer.file,time,offset,loop:!!source.loop});}}; return source; }
     },
   };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'public/app.js'),'utf8'),context);
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'public/app.js'),'utf8'),Object.assign(context,browserTimers));
   await new Promise(resolve=>setImmediate(resolve));
   assert.doesNotMatch(app.innerHTML, /<header|En ledtråd|Resa/);
   await enable();
@@ -106,7 +107,7 @@ test('lagets följdfråga har svarsfält och bara knappen Avsluta utanför fråg
     fetch: async url => ({ok:true,json:async()=>url === '/api/me' ? {role:'dressin'} : {role:'dressin',label:'Lag Dressin',theme:'dressin',phase:'revealed',type:'followup',followupIndex:0,round:1,score:7,question:'Vad heter älven?',locked:null,teams,activeTeams}}),
     EventSource: class {},
   };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'public/app.js'),'utf8'),context);
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'public/app.js'),'utf8'),Object.assign(context,browserTimers));
   await new Promise(resolve=>setImmediate(resolve));
   assert.match(app.innerHTML,/Vad heter älven\?/);
   assert.match(app.innerHTML,/id="followupForm"/);
@@ -126,7 +127,7 @@ test('musikvideo startar på storbilden och ersätts av vald fråga', async () =
     fetch:async url=>({ok:true,json:async()=>url==='/api/me'?{role:'screen'}:initial}),
     EventSource:class{constructor(){events=this;}},
   };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'public/app.js'),'utf8'),context);
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'public/app.js'),'utf8'),Object.assign(context,browserTimers));
   await new Promise(resolve=>setImmediate(resolve));
   assert.match(app.innerHTML,/<video/);
   assert.match(app.innerHTML,/music-screen media-screen/);
@@ -148,7 +149,7 @@ test('storbilden visar bild, karta, lagnålar och facit i rätt ordning', async 
   const app={innerHTML:''}, logout={}, soundButton={addEventListener(){}};
   const mapElement={}, draws=[]; let events;
   const viewport={west:17,east:19,south:59,north:60};
-  const initial={role:'screen',label:'Storbild',phase:'active',round:3,type:'closest',scope:'sweden',viewport,stage:0,image:'/api/image/example.png',teams,activeTeams};
+  const initial={role:'screen',label:'Storbild',phase:'active',round:3,type:'closest',scope:'sweden',viewport,stage:0,image:'/api/image/example.png',clue:'En stor sjö',teams,activeTeams};
   const context={
     window:{GameMap:{draw(element,options){draws.push(options);}}},
     document:{body:{},querySelector:selector=>({'#app':app,'#logout':logout,'#enableSound':soundButton,'#screenMap':app.innerHTML.includes('id="screenMap"')?mapElement:null}[selector]||null),addEventListener(){}},
@@ -156,12 +157,13 @@ test('storbilden visar bild, karta, lagnålar och facit i rätt ordning', async 
     fetch:async url=>({ok:true,json:async()=>url==='/api/me'?{role:'screen'}:initial}),
     EventSource:class{constructor(){events=this;}},
   };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'public/app.js'),'utf8'),context);
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'public/app.js'),'utf8'),Object.assign(context,browserTimers));
   await new Promise(resolve=>setImmediate(resolve));
   assert.match(app.innerHTML,/api\/image\/example.png/);
-  assert.match(app.innerHTML,/closest-screen media-screen/);
+  assert.match(app.innerHTML,/En stor sjö/);
   assert.doesNotMatch(app.innerHTML,/id="screenMap"|Rätt plats/);
-  events.onmessage({data:JSON.stringify({...initial,stage:1,image:undefined})});
+  events.onmessage({data:JSON.stringify({...initial,stage:1,image:undefined,remainingMs:10000})});
+  assert.match(app.innerHTML,/id="countdown"/);
   assert.match(app.innerHTML,/id="screenMap"/);
   assert.deepEqual(JSON.parse(JSON.stringify(draws.at(-1).viewport)),viewport);
   assert.equal(draws.at(-1).locked,true);
@@ -170,7 +172,9 @@ test('storbilden visar bild, karta, lagnålar och facit i rätt ordning', async 
   events.onmessage({data:JSON.stringify({...initial,stage:2,image:undefined,pins})});
   assert.equal(draws.at(-1).pins.dressin.lat,59.34);
   assert.doesNotMatch(app.innerHTML,/Närmast:/);
-  events.onmessage({data:JSON.stringify({...initial,stage:3,image:undefined,pins,correct:{lat:59.33,lon:18.06},result:{winner:'dressin',distances:{dressin:1.2,forsta:200}}})});
+  events.onmessage({data:JSON.stringify({...initial,stage:3,image:undefined,pins,correct:{lat:59.33,lon:18.06},result:{winner:'dressin',winners:['dressin'],points:10,distances:{dressin:1.2,forsta:200}}})});
   assert.equal(draws.at(-1).correct.lat,59.33);
   assert.match(app.innerHTML,/Närmast: Dressinen/);
+  assert.match(app.innerHTML,/<td>200 km<\/td>/);
+  assert.match(app.innerHTML,/\+10/);
 });

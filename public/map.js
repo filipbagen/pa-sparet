@@ -19,7 +19,7 @@ function land() {
 function cleanup() {
   for(const [key,entry] of active) if(!entry.element.isConnected){entry.destroy();active.delete(key);}
 }
-async function draw(element,{scope='world',viewport=null,locked=false,pins={},correct=null,onPick=null,onViewport=null,key='map'}={}) {
+async function draw(element,{scope='world',viewport=null,locked=false,pins={},correct=null,onPick=null,onDrag=null,onViewport=null,key='map'}={}) {
   cleanup();
   const b=locked && viewport ? viewport : bounds[scope]||bounds.world;
   const previous=active.get(key);
@@ -54,7 +54,7 @@ async function draw(element,{scope='world',viewport=null,locked=false,pins={},co
     const halfX=width/(2*view.scale),halfY=height/(2*view.scale);
     view.cx=halfX*2>limits.east-limits.west?(limits.west+limits.east)/2:clamp(view.cx,limits.west+halfX,limits.east-halfX);
     view.cy=halfY*2>limits.bottom-limits.top?(limits.top+limits.bottom)/2:clamp(view.cy,limits.top+halfY,limits.bottom-halfY);
-    if(!locked && pins.mine){
+    if((!locked||onDrag) && pins.mine){
       const margin=Math.min(24,Math.min(width,height)/4)/view.scale;
       view.cx=clamp(view.cx,pins.mine.lon-halfX+margin,pins.mine.lon+halfX-margin);
       const pinY=mercator(pins.mine.lat);
@@ -85,7 +85,7 @@ async function draw(element,{scope='world',viewport=null,locked=false,pins={},co
       const x=width/2+(point.lon-view.cx)*view.scale,y=height/2+(mercator(point.lat)-view.cy)*view.scale;
       if(x<0||x>width||y<0||y>height)continue;
       const pinStyle={dressin:['#168b53','D'],forsta:['#8e44ad','F'],x2000:['#c0392b','X'],malartag:['#2980b9','M'],loket:['#d68910','L'],correct:['#e7bc24','✓'],mine:['#d83027','●']}[name]||['#d83027','●'];
-      ctx.beginPath();ctx.arc(x,y,15,0,Math.PI*2);ctx.fillStyle=pinStyle[0];ctx.fill();ctx.strokeStyle='white';ctx.lineWidth=3;ctx.stroke();
+      const radius=name==='mine'&&onDrag?20:15;ctx.beginPath();ctx.arc(x,y,radius,0,Math.PI*2);ctx.fillStyle=pinStyle[0];ctx.fill();ctx.strokeStyle='white';ctx.lineWidth=3;ctx.stroke();
       ctx.fillStyle='white';ctx.font='bold 16px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(pinStyle[1],x,y);
     }
   }
@@ -97,23 +97,28 @@ async function draw(element,{scope='world',viewport=null,locked=false,pins={},co
     if(!fitted){if(!camera)fit(initial);fitted=true;}
     refresh();
   }
-  const pointers=new Map();let gesture=null;
+  const pointers=new Map();let gesture=null,dragging=null;
+  const pinScreen=()=>({x:width/2+(pins.mine.lon-view.cx)*view.scale,y:height/2+(mercator(pins.mine.lat)-view.cy)*view.scale});
+  function movePin(x,y){const point=coordinates(x,y);pins.mine={lat:+clamp(point.lat,b.south,b.north).toFixed(5),lon:+clamp(point.lon,b.west,b.east).toFixed(5)};paint();return pins.mine;}
   canvas.onpointerdown=event=>{
+    if(onDrag&&pins.mine&&pointers.size===0){const at=pinScreen();if(Math.hypot(event.offsetX-at.x,event.offsetY-at.y)<=44){canvas.setPointerCapture(event.pointerId);dragging=event.pointerId;return;}}
     canvas.setPointerCapture(event.pointerId);pointers.set(event.pointerId,{x:event.offsetX,y:event.offsetY,startX:event.offsetX,startY:event.offsetY});
     if(pointers.size===2){const [a,c]=[...pointers.values()];gesture={distance:Math.hypot(a.x-c.x,a.y-c.y),scale:view.scale};}
   };
   canvas.onpointermove=event=>{
+    if(dragging===event.pointerId){onDrag(movePin(event.offsetX,event.offsetY),false);return;}
     const pointer=pointers.get(event.pointerId);if(!pointer)return;
     const x=event.offsetX,y=event.offsetY,dx=x-pointer.x,dy=y-pointer.y;pointer.x=x;pointer.y=y;
     if(pointers.size===2&&gesture){const [a,c]=[...pointers.values()];view.scale=gesture.scale*Math.hypot(a.x-c.x,a.y-c.y)/Math.max(1,gesture.distance);refresh();}
     else {view.cx-=dx/view.scale;view.cy-=dy/view.scale;refresh();}
   };
   canvas.onpointerup=event=>{
+    if(dragging===event.pointerId){dragging=null;onDrag(movePin(event.offsetX,event.offsetY),true);refresh();return;}
     const pointer=pointers.get(event.pointerId);pointers.delete(event.pointerId);if(pointers.size<2)gesture=null;
     if(pointer&&Math.hypot(pointer.x-pointer.startX,pointer.y-pointer.startY)<7&&onPick){const point=coordinates(pointer.x,pointer.y);if(point.lat>=b.south&&point.lat<=b.north&&point.lon>=b.west&&point.lon<=b.east)onPick({lat:+point.lat.toFixed(5),lon:+point.lon.toFixed(5)});}
     report();
   };
-  canvas.onpointercancel=event=>{pointers.delete(event.pointerId);gesture=null;};
+  canvas.onpointercancel=event=>{if(dragging===event.pointerId){dragging=null;onDrag(pins.mine,true);return;}pointers.delete(event.pointerId);gesture=null;};
   canvas.onwheel=event=>{event.preventDefault();const {lon,lat}=coordinates(event.offsetX,event.offsetY);view.scale*=Math.exp(-event.deltaY*.002);constrain();view.cx=lon-(event.offsetX-width/2)/view.scale;view.cy=mercator(lat)-(event.offsetY-height/2)/view.scale;refresh();};
   const controls=document.createElement('div');controls.className='local-map-controls';
   for(const [label,factor] of [['+',1.6],['−',1/1.6]]){const button=document.createElement('button');button.type='button';button.textContent=label;button.setAttribute('aria-label',factor>1?'Zooma in':'Zooma ut');button.onclick=()=>{view.scale*=factor;refresh();};controls.append(button);}

@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 const app = document.querySelector('#app');
-let state = null, editing = null, brakeOpen = false, editingPin = null, editingViewport = null, draftPin = null;
+let state = null, editing = null, brakeOpen = false, editingPin = null, editingViewport = null, draftPin = null, closestDeadline = 0;
 let brakePending = false, audioContext = null, audioReady = false, audioLoading = false, audioError = '', audioNextTime = 0, destinationSource = null, destinationRound = null, destinationPlaybackRound = null, destinationOffset = 0, destinationStartedAt = 0;
 const soundBuffers = {}, seenBrakes = new Set();
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -13,7 +13,10 @@ async function api(path, data) {
   const res = await fetch('/api/' + path, { method: data === undefined ? 'GET' : 'POST', headers: data === undefined ? {} : {'Content-Type':'application/json'}, body: data === undefined ? undefined : JSON.stringify(data) });
   const json = await res.json(); if (!res.ok) throw Error(json.error || 'Något gick fel.'); return json;
 }
-async function action(path, data = {}) { try { state = await api(path, data); render(); } catch (e) { alert(e.message); } }
+let pinSending = false, pinPending = null;
+function pushPin(point) { pinPending = {...point}; if (pinSending) return; pinSending = true; (async () => { while (pinPending) { const next = pinPending; pinPending = null; try { await api('closest-answer', {...next, round: state.round}); } catch {} } pinSending = false; })(); }
+const trackDeadline = data => { if (data?.remainingMs > 0) closestDeadline = performance.now() + (data.remainingMs || 0); };
+async function action(path, data = {}) { try { state = await api(path, data); trackDeadline(state); render(); } catch (e) { alert(e.message); } }
 function render() {
   if (!state?.role) { app.innerHTML = `<section class="login card"><h1>På resande fot</h1><p>Ange din kod för att komma till rätt vy.</p><form id="login"><label>Åtkomstkod<input name="code" type="password" required autocomplete="current-password" autocapitalize="none" spellcheck="false"></label><button>Logga in</button></form></section>`; return; }
   document.body.className = state.theme || state.role;
@@ -30,8 +33,14 @@ function render() {
     playButton.onclick = () => video.play().then(() => { playButton.hidden = true; }).catch(() => { playButton.hidden = false; });
   }
 }
-function screenKey(data) { return JSON.stringify([data.round,data.phase,data.type,data.points,data.followupNumber,data.question,data.answer,data.video,data.questions,data.answers,data.stage,data.image,data.pins,data.correct,data.result,data.type==='destination'?data.brakes:undefined]); }
-function resultText(result) { if (!result) return ''; const winner=result.winner==='tie'?'Oavgjort':result.winner?teamLabel(result.winner):'Inget lag'; const distances=activeTeamList().map(t=>`${esc(t.short)}: ${result.distances?.[t.id] ?? '–'} km`).join(' · '); return `<div class="closest-result"><h2>Närmast: ${esc(winner)}</h2><p>${distances}</p></div>`; }
+function screenKey(data) { return JSON.stringify([data.round,data.phase,data.type,data.points,data.followupNumber,data.question,data.answer,data.video,data.questions,data.answers,data.stage,data.image,data.clue,data.pins,data.correct,data.result,data.type==='destination'?data.brakes:undefined]); }
+function resultText(result) {
+  if (!result) return '';
+  const winners = result.winners || [];
+  const title = !winners.length ? 'Inget lag satte en nål' : winners.length > 1 ? 'Oavgjort: ' + winners.map(teamLabel).join(' och ') : 'Närmast: ' + teamLabel(winners[0]);
+  const rows = activeTeamList().map(t => ({ t, d: result.distances?.[t.id] })).sort((a,b) => (a.d ?? Infinity) - (b.d ?? Infinity));
+  return `<div class="closest-result"><h2>${esc(title)}</h2><table class="closest-table"><thead><tr><th>#</th><th>Lag</th><th>Avstånd</th><th>Poäng</th></tr></thead><tbody>${rows.map(({t,d}) => `<tr${winners.includes(t.id) ? ' class="winner"' : ''}><td>${d == null ? '–' : rows.findIndex(r => r.d === d) + 1}</td><td>${esc(t.short)}</td><td>${d == null ? '–' : d + ' km'}</td><td>${winners.includes(t.id) ? '+' + result.points : '–'}</td></tr>`).join('')}</tbody></table></div>`;
+}
 function mountMaps() {
   if (typeof window === 'undefined' || !window.GameMap) return;
   window.GameMap.cleanup?.();
@@ -46,9 +55,9 @@ function mountMaps() {
   }
   const teamMap=document.querySelector('#teamMap');
   if (teamMap) {
-    const pin=state.pin||draftPin;
-    const draw=()=>window.GameMap.draw(teamMap,{scope:state.scope,viewport:state.viewport,locked:true,key:'team:'+state.round,pins:(state.pin||draftPin)?{mine:state.pin||draftPin}:{},correct:state.correct,onPick:state.pin||state.correct?null:point=>{draftPin=point;draw();document.querySelector('#saveClosest').disabled=false;}});
-    draw();
+    if (state.stage===1 && !draftPin && !state.pin) { const v=state.viewport; draftPin={lat:+((v.north+v.south)/2).toFixed(5),lon:+((v.east+v.west)/2).toFixed(5)}; pushPin(draftPin); }
+    const pin=state.stage===1?(draftPin||state.pin):state.pin;
+    window.GameMap.draw(teamMap,{scope:state.scope,viewport:state.viewport,locked:true,key:'team:'+state.round,pins:pin?{mine:{...pin}}:{},correct:state.correct,onDrag:state.stage===1?(point,final)=>{ if (performance.now()>closestDeadline) return; draftPin={...point}; pushPin(draftPin); }:null});
   }
   const screenMap=document.querySelector('#screenMap');
   if (screenMap) window.GameMap.draw(screenMap,{scope:state.scope,viewport:state.viewport,locked:true,key:'screen:'+state.round,pins:state.pins||{},correct:state.correct});
@@ -58,7 +67,7 @@ function host() {
   let current = `<div class="card"><h2>Pågående spel</h2><p>Väntar på nästa fråga.</p></div>`;
   if (q && g.phase !== 'waiting') {
     current = q.type === 'closest'
-      ? `<div class="card"><div class="eyebrow">Närmast vinner</div><h2>${esc(q.title)}</h2><p>${activeTeamList().map(t=>`${esc(t.short)}: ${g.closestAnswers?.[t.id] ? 'Kartnål låst' : 'Väntar på svar'}`).join(' · ')}</p><div class="actions">${g.closestStage===0 ? `<button id="closestMap" ${activeTeamList().some(t=>!g.closestAnswers?.[t.id]) ? 'disabled' : ''}>Visa karta på storbilden</button>` : ''}${g.closestStage===1 ? '<button id="closestPins">Visa lagens nålar</button>' : ''}${g.closestStage===2 ? '<button id="closestAnswer">Visa rätt plats och resultat</button>' : ''}<button id="wait">Nästa fråga</button></div>${g.closestStage===3 ? resultText(state.closestResult) : ''}</div>`
+      ? `<div class="card"><div class="eyebrow">Närmast vinner</div><h2>${esc(q.title)}</h2><p>${activeTeamList().map(t=>`${esc(t.short)}: ${g.closestAnswers?.[t.id] ? 'Nål satt' : 'Ingen nål'}`).join(' · ')}</p>${g.closestStage===1 ? '<p><strong id="countdown" class="countdown-host"></strong></p>' : ''}<div class="actions">${g.closestStage===0 ? '<button id="closestMap">Starta 10 sekunder</button>' : ''}${g.closestStage===1 ? '<button id="closestPins" class="secondary">Visa nålar nu (om tiden gått ut)</button>' : ''}${g.closestStage===2 ? '<button id="closestAnswer">Visa rätt plats och resultat</button>' : ''}<button id="wait">Nästa fråga</button></div>${g.closestStage===3 ? resultText(state.closestResult) + '<p>Poängen har delats ut automatiskt.</p>' : ''}</div>`
       : q.type === 'music'
       ? `<div class="card"><div class="eyebrow">Musikfråga · Pågår</div><h2>${esc(q.title)}</h2><p>Videon visas på storbilden tills du visar frågorna.</p>${g.musicShown ? `<div class="eyebrow">Alla musikfrågor</div><ol class="music-questions">${q.musicQuestions.map(item => `<li>${esc(item.question)}<br><small>Facit: ${esc(item.answer)}</small></li>`).join('')}</ol><div class="answers">${answerSlots(id => g.musicAnswers?.[id] ? esc(g.musicAnswers[id]) : 'Inget låst svar')}</div>${!g.musicRevealed ? '<button id="revealMusic">Avslöja facit</button>' : ''}` : '<button id="showMusicQuestions">Visa alla musikfrågor</button>'}<button id="wait">Nästa fråga</button></div>`
       : `<div class="card"><div class="eyebrow">Resmål · ${g.phase === 'revealed' ? 'Avslöjad' : 'Pågår'}</div><h2>${esc(q.title)}</h2><div class="points">${[10,8,6,4,2][g.clueIndex]} poäng</div><p class="clue">${esc(q.clues[g.clueIndex])}</p><div class="actions">${g.phase === 'active' && g.clueIndex < 4 ? '<button id="next">Nästa ledtråd</button>' : ''}${g.phase === 'active' ? '<button id="reveal">Avslöja facit</button>' : '<button id="wait">Nästa fråga</button>'}</div>${g.phase === 'revealed' ? `<p class="answer">Rätt svar: ${esc(q.answer)}</p>` : ''}<div class="answers">${answerSlots(id => g.answers[id] ? `${esc(g.answers[id].answer)} · ${g.answers[id].points} p` : 'Inget låst svar')}</div></div>`;
@@ -74,7 +83,7 @@ function host() {
   const editorType=e?.type || editing?.type;
   const isMusic = editorType === 'music';
   const editorFields = editorType === 'closest'
-    ? `<label>Bild (PNG, JPG eller WebP)<input name="imageFile" type="file" accept="image/png,image/jpeg,image/webp" ${e?.image?'':'required'}></label>${e?.image?'<p>En bild är redan sparad. Välj en fil om du vill byta den.</p>':''}<p>Zooma och flytta kartan till det utsnitt lagen ska se. Klicka sedan på rätt plats. Det synliga utsnittet sparas när du sparar frågan.</p><div id="correctMap" class="map-wrap"></div><input type="hidden" name="viewport" value="${esc(editingViewport?JSON.stringify(editingViewport):e?.viewport?JSON.stringify(e.viewport):'')}"><input type="hidden" name="answerLat" value="${esc(editingPin?.lat ?? e?.answerLat ?? '')}"><input type="hidden" name="answerLon" value="${esc(editingPin?.lon ?? e?.answerLon ?? '')}">`
+    ? `<label>Ledtråd som text (valfri om du väljer bild)<textarea name="clue" maxlength="300">${esc(e?.clue||'')}</textarea></label><label>Ledtråd som bild (valfri om du skriver text; PNG, JPG eller WebP)<input name="imageFile" type="file" accept="image/png,image/jpeg,image/webp"></label><label>Poäng till närmaste lag<input name="points" type="number" min="1" max="100" value="${esc(e?.points||10)}" required></label>${e?.image?'<p>En bild är redan sparad. Välj en fil om du vill byta den.</p>':''}<p>Zooma och flytta kartan till det utsnitt lagen ska se. Klicka sedan på rätt plats. Det synliga utsnittet sparas när du sparar frågan.</p><div id="correctMap" class="map-wrap"></div><input type="hidden" name="viewport" value="${esc(editingViewport?JSON.stringify(editingViewport):e?.viewport?JSON.stringify(e.viewport):'')}"><input type="hidden" name="answerLat" value="${esc(editingPin?.lat ?? e?.answerLat ?? '')}"><input type="hidden" name="answerLon" value="${esc(editingPin?.lon ?? e?.answerLon ?? '')}">`
     : isMusic
     ? `<label>MP4-video<input name="videoFile" type="file" accept="video/mp4,.mp4" ${e?.video ? '' : 'required'}></label>${e?.video ? '<p>En video är redan sparad. Välj en fil om du vill byta den.</p>' : ''}${[0,1].map(i => `<label>Musikfråga ${i + 1}<textarea name="musicQuestion${i}" required>${esc(e?.musicQuestions?.[i]?.question || '')}</textarea></label><label>Facit till musikfråga ${i + 1}<input name="musicAnswer${i}" required value="${esc(e?.musicQuestions?.[i]?.answer || '')}"></label>`).join('')}`
     : [10,8,6,4,2].map((p,i) => `<label>${p} poäng<textarea name="clue${i}" required>${esc(e?.clues?.[i] || '')}</textarea></label>`).join('') + [0,1].map(i => `<label>Följdfråga ${i + 1}<textarea name="followupQuestion${i}">${esc(e?.followups?.[i]?.question || '')}</textarea></label><label>Facit till följdfråga ${i + 1}<input name="followupAnswer${i}" value="${esc(e?.followups?.[i]?.answer || '')}"></label>`).join('') + `<label>Facit<input name="answer" required value="${esc(e?.answer || '')}"></label>`;
@@ -83,7 +92,7 @@ function host() {
 }
 function team() {
   if (state.phase === 'waiting') return `<section class="hero card"><div class="eyebrow">Redo för avfärd</div><h1>Väntar på nästa fråga</h1><p>Spelledaren startar snart.</p></section>`;
-  if (state.type === 'closest') return `<section class="hero card closest-team"><div class="eyebrow">Närmast vinner</div><h1>Sätt er kartnål</h1><div id="teamMap" class="map-wrap"></div>${state.pin ? '<div class="locked">Er kartnål är låst.</div>' : `<p>Tryck på kartan där ni tror att bilden är tagen.</p><button id="saveClosest" ${draftPin?'':'disabled'}>Lås kartnål</button>`}${state.correct ? resultText(state.result) : ''}</section>`;
+  if (state.type === 'closest') return `<section class="hero card closest-team"><div class="eyebrow">Närmast vinner</div><h1>${state.stage===0?'Gör er redo':state.stage===1?'Placera er nål!':state.stage===2?'Tiden är ute':'Resultat'}</h1>${state.stage===1?'<div id="countdown" class="countdown"></div>':''}<div id="teamMap" class="map-wrap"></div>${state.stage===0?'<p>Titta på storbilden. Ledtråden visas där. Kartan öppnas när spelledaren startar tiden.</p>':state.stage===1?'<p>Dra nålen med fingret dit ni tror att platsen ligger. Ni kan flytta den tills tiden går ut.</p>':state.stage===2?'<p>'+(state.pin?'Er nål är låst.':'Ni hann inte sätta någon nål.')+'</p>':''}${state.correct ? resultText(state.result) : ''}</section>`;
   if (state.type === 'music') return `<section class="hero card"><h1>Lyssna och njut</h1></section>`;
   if (state.type === 'music-question') return `<section class="hero card"><div class="eyebrow">Musikfrågor</div><ol class="music-questions">${state.questions.map(question => `<li>${esc(question)}</li>`).join('')}</ol>${state.locked ? `<div class="locked"><strong>Ert svar är låst</strong><p class="preserve-lines">${esc(state.locked)}</p></div>` : state.answers ? '' : `<form id="musicAnswerForm"><label>Skriv svaren på alla frågor i samma ruta<textarea name="answer" required maxlength="2000" rows="6"></textarea></label><button>Lås svar</button></form>`}${state.answers ? `<div class="reveal"><strong>Rätta svar</strong><ol>${state.answers.map(answer => `<li>${esc(answer)}</li>`).join('')}</ol></div>` : ''}</section>`;
   if (state.type === 'followup') return `<section class="hero card"><div class="eyebrow">Följdfråga ${state.followupIndex + 1}</div><h1>${esc(state.question)}</h1>${state.locked ? `<div class="locked"><strong>Ert svar är låst</strong><p>${esc(state.locked)}</p></div>` : state.answer ? '' : `<form id="followupForm"><label>Ert svar<input name="answer" required maxlength="200" autocomplete="off"></label><button>Lås svar</button></form>`}${state.answer ? `<div class="reveal">Rätt svar: <strong>${esc(state.answer)}</strong></div>` : ''}</section>`;
@@ -96,7 +105,7 @@ function screen() {
   const brakes=state.type==='destination' && state.phase==='active' ? state.brakes||[] : [];
   const brakeNotice=brakes.length ? `<div class="screen-brake-notices" aria-live="polite">${brakes.map((event,index)=>{const meta=teamMeta(event.team);return `<div class="screen-brake-notice ${(meta?.theme||'dressin')+'-brake'} ${index===brakes.length-1?'latest-brake':''}"><img src="/assets/nodbroms.png" alt=""><div><strong>${esc(meta?.short||event.team)} har dragit i nödbromsen!</strong></div></div>`;}).join('')}</div>` : '';
   if (state.phase === 'waiting') return soundControl + `<section class="screen-card"><div class="eyebrow">På resande fot</div><h1>Väntar på nästa fråga</h1></section>`;
-  if (state.type === 'closest') return soundControl + (state.stage===0 ? `<section class="screen-card closest-screen media-screen"><img class="closest-image" src="${esc(state.image)}" alt="Bild för Närmast vinner"></section>` : `<section class="screen-card closest-screen"><div class="eyebrow">Närmast vinner</div><div id="screenMap" class="map-wrap"></div>${state.stage>=2?`<p class="map-legend">${activeTeamList().map(t=>`<span style="color:${esc(t.color)}">● ${esc(t.short)}</span>`).join(' ')}${state.stage>=3?' <span class="correct-dot">● Rätt plats</span>':''}</p>`:''}${state.stage===3?resultText(state.result):''}</section>`);
+  if (state.type === 'closest') { const clue = `${state.image?`<img class="closest-image" src="${esc(state.image)}" alt="Ledtråd">`:''}${state.clue?`<p class="closest-clue">${esc(state.clue)}</p>`:''}`; return soundControl + (state.stage===0 ? `<section class="screen-card closest-screen"><div class="eyebrow">Närmast vinner</div><div class="closest-clue-box">${clue}</div></section>` : `<section class="screen-card closest-screen"><div class="eyebrow">Närmast vinner</div>${state.stage===1?'<div id="countdown" class="countdown countdown-screen"></div>':''}<div class="closest-split"><div class="closest-clue-box">${clue}</div><div id="screenMap" class="map-wrap"></div></div>${state.stage>=2?`<p class="map-legend">${activeTeamList().map(t=>`<span style="color:${esc(t.color)}">● ${esc(t.short)}</span>`).join(' ')}${state.stage>=3?' <span class="correct-dot">● Rätt plats</span>':''}</p>`:''}${state.stage===3?resultText(state.result):''}</section>`); }
   if (state.type === 'music') {
     if (state.questions) return soundControl + `<section class="screen-card music-question-screen"><div class="eyebrow">Musikfrågor</div><h1>${state.answers?'Rätta svar':'Vad hörde ni?'}</h1><ol class="screen-music-questions">${state.questions.map((question,index) => `<li><div class="music-question-copy">${esc(question)}</div>${state.answers ? `<div class="screen-music-answer"><span>Rätt svar</span><strong>${esc(state.answers[index])}</strong></div>` : ''}</li>`).join('')}</ol></section>`;
     return soundControl + `<section class="screen-card music-screen media-screen"><video id="musicVideo" src="${esc(state.video)}" autoplay playsinline controls></video><button id="playVideo" class="video-play" hidden>Starta video</button></section>`;
@@ -198,7 +207,7 @@ function bindHost() {
           const result=await response.json(); if (!response.ok) throw Error(result.error||'Bilden kunde inte laddas upp.');
           q.image=result.image;
         }
-        q.answerLat=f.get('answerLat'); q.answerLon=f.get('answerLon'); q.viewport=f.get('viewport')?JSON.parse(f.get('viewport')):null;
+        q.clue=f.get('clue'); q.points=f.get('points'); q.answerLat=f.get('answerLat'); q.answerLon=f.get('answerLon'); q.viewport=f.get('viewport')?JSON.parse(f.get('viewport')):null;
       } else {
         q.clues = [0,1,2,3,4].map(i => f.get('clue'+i));
         q.followups = [0,1].map(i => ({question:f.get('followupQuestion'+i),answer:f.get('followupAnswer'+i)}));
@@ -208,7 +217,7 @@ function bindHost() {
   });
 }
 function bindTeam() {
-  document.querySelector('#saveClosest')?.addEventListener('click',async()=>{if (!draftPin) return;await action('closest-answer',{...draftPin,round:state.round});});
+
   document.querySelector('#musicAnswerForm')?.addEventListener('submit', async e => { e.preventDefault(); const answer = new FormData(e.target).get('answer'); await action('music-answer', {answer, round:state.round}); });
   document.querySelector('#followupForm')?.addEventListener('submit', async e => { e.preventDefault(); const answer = new FormData(e.target).get('answer'); await action('followup-answer', { answer, round:state.round, index:state.followupIndex }); });
   const brake = document.querySelector('#brake');
@@ -231,19 +240,22 @@ function bindTeam() {
 }
 document.addEventListener('submit', async e => { if (e.target.id !== 'login') return; e.preventDefault(); const f = new FormData(e.target); try { const result = await api('login', {code:f.get('code')}); location.href = '/view/' + result.role; } catch(err) { alert(err.message); } });
 render();
+setInterval(() => { const el = document.querySelector('#countdown'); if (el) el.textContent = Math.max(0, Math.ceil((closestDeadline - performance.now()) / 1000)); }, 100);
 (async () => {
   try {
     const me = await api('me');
     if (!me.role) return;
     const requested = location.pathname.split('/')[2];
     if (location.pathname.startsWith('/view/') && requested !== me.role) { app.textContent = 'Ingen åtkomst.'; return; }
-    state = await api('state'); handleBrakes(state, true); syncDestinationMusic(state); render();
+    state = await api('state'); trackDeadline(state); handleBrakes(state, true); syncDestinationMusic(state); render();
     const events = new EventSource('/api/events');
     events.onmessage = e => {
       const next = JSON.parse(e.data);
       const draft = document.querySelector('#answerForm input, #followupForm input, #musicAnswerForm textarea')?.value;
-      if (next.round !== state.round || next.phase !== state.phase) { brakeOpen = false; draftPin = null; }
-      const shouldRender = next.role !== 'screen' || screenKey(next) !== screenKey(state);
+      if (next.round !== state.round || next.phase !== state.phase || next.stage !== state.stage) { brakeOpen = false; draftPin = null; }
+      trackDeadline(next);
+      const keepTeamMap = next.type === 'closest' && state.type === 'closest' && next.role !== 'screen' && next.role !== 'host' && next.stage === 1 && state.stage === 1 && next.round === state.round && next.phase === state.phase;
+      const shouldRender = !keepTeamMap && (next.role !== 'screen' || screenKey(next) !== screenKey(state));
       handleBrakes(next); syncDestinationMusic(next); state = next; if (shouldRender) render();
       const currentInput = document.querySelector('#answerForm input, #followupForm input, #musicAnswerForm textarea');
       if (draft && currentInput) currentInput.value = draft;
