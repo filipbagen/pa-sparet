@@ -1,0 +1,7 @@
+{
+  "name": "pasparet-laglek",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": { "start": "node server.js", "test": "node --test --test-isolation=none server.test.js client.test.js" },
+  "engines": { "node": ">=20" }
+}
