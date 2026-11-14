@@ -218,11 +218,15 @@ test('storbilden visar bild, karta, lagnålar och facit i rätt ordning', async 
   events.onmessage({data:JSON.stringify({...initial,stage:2,image:undefined,pins})});
   assert.equal(draws.at(-1).pins.dressin.lat,59.34);
   assert.doesNotMatch(app.innerHTML,/Närmast:/);
-  events.onmessage({data:JSON.stringify({...initial,stage:3,image:undefined,pins,correct:{lat:59.33,lon:18.06},result:{winner:'dressin',winners:['dressin'],points:10,distances:{dressin:1.2,forsta:200}}})});
+  events.onmessage({data:JSON.stringify({...initial,stage:3,image:undefined,pins,correct:{lat:59.33,lon:18.06},result:{winner:'dressin',winners:['dressin'],distances:{dressin:1.2,forsta:200}},place:2,placeCount:6,target:3,prize:3,wins:{dressin:2,forsta:1},done:false})});
   assert.equal(draws.at(-1).correct.lat,59.33);
   assert.match(app.innerHTML,/Närmast: Dressinen/);
+  assert.match(app.innerHTML,/plats 2 av 6 · först till 3/);
   assert.match(app.innerHTML,/<td>200 km<\/td>/);
-  assert.match(app.innerHTML,/\+10/);
+  assert.match(app.innerHTML,/<td>2 \(\+1\)<\/td>/);
+  assert.doesNotMatch(app.innerHTML,/vinner Närmast vinner/);
+  events.onmessage({data:JSON.stringify({...initial,stage:3,image:undefined,pins,correct:{lat:59.33,lon:18.06},result:{winner:'dressin',winners:['dressin'],distances:{dressin:1.2,forsta:200}},place:4,placeCount:6,target:3,prize:3,wins:{dressin:3,forsta:1},done:true,champions:['dressin']})});
+  assert.match(app.innerHTML,/Dressinen vinner Närmast vinner! <b>\+3 p<\/b>/);
 });
 
 test('spelledarens Show-vy visar manus, facit, lagens svar, storbildsförhandsvisning och nästa steg', async () => {
@@ -272,7 +276,7 @@ test('kartredigeraren läser och skriver sina fält i formuläret, inte i <meta 
   const source = fs.readFileSync(path.join(__dirname,'public/app.js'),'utf8');
   assert.match(fs.readFileSync(path.join(__dirname,'public/index.html'),'utf8'), /<meta name="viewport"/);
   assert.doesNotMatch(source, /querySelector\('\[name="(viewport|answerLat|answerLon)"\]'\)/);
-  assert.match(source, /querySelector\('#questionForm \[name="viewport"\]'\)/);
+  assert.match(source, /querySelector\(`#questionForm \[name="\$\{name\}\$\{k\}"\]`\)/);
 });
 
 test('storbilden loopar lobbylåten i lobbyn och stänger av den när spelet startar', async () => {
@@ -341,4 +345,33 @@ test('lagets karta täcker skärmen under nedräkningen och skickar kartans mitt
   assert.doesNotMatch(body.className, /fullmap/);
   assert.equal(draws.at(-1).centerPin, undefined);
   assert.equal(draws.at(-1).pins.mine.lat, 58.1);
+});
+
+test('spelledaren väljer frågeset och kör Närmast vinner plats för plats', async () => {
+  const app = {innerHTML:''}, logout = {}, posts = [];
+  let events;
+  const viewport = {west:17,east:19,south:59,north:60};
+  const q = {id:'c1',type:'closest',title:'Kartjakt',target:3,points:3,scope:'world',places:[{clue:'Plats ett',answerLat:59.3,answerLon:18,viewport},{clue:'Plats två',answerLat:59.5,answerLon:18.5,viewport}]};
+  const game = {phase:'active',questionId:'c1',round:9,answers:{},closestStage:3,closestPlace:0,closestWins:{dressin:1},closestDone:false};
+  const sets = [{id:'s1',name:'Fredag',count:1},{id:'s2',name:'Lördag',count:6}];
+  const initial = {role:'host',label:'Spelledare',phase:'active',round:9,teams,activeTeams,game,scores:{dressin:0,forsta:0},questions:[q],sets,setId:'s1',played:['c1'],activeQuestion:q,closestResult:{winner:'dressin',winners:['dressin'],distances:{dressin:1,forsta:9}},tv:{mode:'game'},tvStatus:{audioReady:true},screenOnline:1,screenView:{role:'screen',phase:'active',type:'closest',stage:3,teams,activeTeams}};
+  const context = {
+    document:{body:{},querySelector:selector=>({'#app':app,'#logout':logout}[selector]||null),querySelectorAll:()=>[],addEventListener(){}},
+    location:{pathname:'/view/host'},
+    fetch:async (url,opts)=>{ if (opts?.method==='POST') posts.push([url,JSON.parse(opts.body)]); return {ok:true,json:async()=>url==='/api/me'?{role:'host'}:initial}; },
+    EventSource:class{constructor(){events=this;}},
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'public/app.js'),'utf8'),Object.assign(context,browserTimers));
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.match(app.innerHTML,/Plats 1 av 2 · Resultat/);
+  assert.match(app.innerHTML,/Först till 3 vunna platser/);
+  assert.match(app.innerHTML,/Dressinen <b>1\/3<\/b>/);
+  assert.match(app.innerHTML,/Nästa plats · 2 av 2/);
+  assert.match(app.innerHTML,/1 av 3 vinster/);
+  events.onmessage({data:JSON.stringify({...initial,game:{...game,closestDone:true,closestChampions:['dressin'],closestWins:{dressin:3}}})});
+  assert.match(app.innerHTML,/Avsluta frågan/);
+  assert.match(app.innerHTML,/🏆 \+3 p/);
+  events.onmessage({data:JSON.stringify({...initial,phase:'waiting',lobby:true,claimed:[],game:{phase:'waiting',answers:{}},activeQuestion:null})});
+  assert.match(app.innerHTML,/id="setPick"[\s\S]*<option value="s1" selected>Fredag \(1 frågor\)<\/option><option value="s2" >Lördag \(6 frågor\)/);
+  assert.match(app.innerHTML,/Lobby · lagen väljer lag · <b>Fredag<\/b>/);
 });

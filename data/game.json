@@ -1,176 +1,683 @@
 {
-  "questions": [
-    {
-      "id": "05d6db09-69a7-40b0-98dc-7454e6c73b0a",
-      "type": "destination",
-      "title": "Malingsbo-Kloten",
-      "answer": "Malingsbo-Kloten",
-      "clues": [
-        "Vi lämnar gurkornas stad och styr mot ett mål där en hammare en gång betydde mer än en spik. Resan för oss från ett gammalt centrum för metallhandel mot en plats där samma metall snarare bearbetades. Vårt mål har genom århundradena varit betydligt bättre på att smida än på att växa.",
-        "Vi fortsätter mot en plats där Fredrik I:s tid lämnade ett ovanligt tydligt avtryck. Här kunde den välbeställde en gång blicka ut över både arbete och ägor från betydligt bekvämare omgivningar än de som stod för hammarslagen. I dag är tystnaden förmodligen en större tillgång än järnet.",
-        "Nu börjar vi närma oss. Vårt mål befinner sig i en trakt där tre landskap nästan får trängas om utrymmet, och ortens närmaste större samhälle har ett namn som för tankarna till både metallhantverk och människokroppen. Vi ska dock inte dit.",
-        "Naturälskaren har kanske redan tryckt. Orten delar sitt namn med ena halvan av ett mycket stort skyddat naturområde. Den andra halvan har ett namn som också kan betyda en rund, kompakt massa. Här finns gott om skog, sjöar och möjligheter att få något på kroken.",
-        "Nu söker vi en liten ort i södra Dalarna, i Smedjebackens kommun. Lägg Malings- framför -bo, så har ni destinationen."
-      ],
-      "followups": [
-        {
-          "question": "Skogarna kring Malingsbo har flera av Sveriges stora vilda däggdjur. Vilket är Sveriges största hjortdjur?",
-          "answer": "Älg"
-        },
-        {
-          "question": "I Malingsbo–Kloten finns gott om fiskevatten. Säg en fiskart som finns i svenska insjöar och som inte är en rovfisk?",
-          "answer": "Mört"
-        }
-      ]
-    },
-    {
-      "id": "5446fe07-7689-40af-83d2-cb4c41c3da28",
-      "type": "music",
-      "title": "Instant repeater 99",
-      "answer": "",
-      "video": "8f1989c0-a3ee-4516-874f-7e20b5c74239.mp4",
-      "musicQuestions": [
-        {
-          "question": "Vad heter gruppen som gjorde huvudlåten?",
-          "answer": "Soundtrack of our lives"
-        },
-        {
-          "question": "Vi hörde en liten snutt från en annan artist, nämligen Loreen. Hon vill nog inte att henns låtar sprids på olagliga sidor...\nVilken fildelningstjänst lanserades 1999 och förändrade musikbranschen genom att låta användare dela MP3-filer?",
-          "answer": "Napster"
-        }
-      ]
-    },
-    {
-      "id": "94847a6a-a5dc-4c1e-b8a4-b9c50a4283c7",
-      "type": "destination",
-      "title": "Drottninggatan 39B",
-      "answer": "Drottninggatan 39B",
-      "clues": [
-        "Vi styr mot en destination där vår värdinna, åtminstone språkligt, har avancerat betydligt längre i karriären än de flesta.\nFör att hitta rätt nummer kan en kemist vara till hjälp: sök grundämnet som fått sitt namn efter ett land i Sydamerika och notera dess atomnummer.\nMen inte ens då är vi riktigt framme. Vår slutstation kräver ytterligare en distinktion.",
-        "Vi fortsätter mot en plats vars första del skulle göra Silvia mer träffsäker än Carl XVI Gustaf.\nSiffrorna hittar vi den här gången på en amerikansk president: räkna fram vilken i ordningen Jimmy Carter var.\nDen sista pusselbiten är däremot varken kunglig eller amerikansk. Där räcker det att komma tvåa.",
-        "Destinationen finns i en stad där H&M öppnade sin allra första butik, men det namn som stod på skylten då var inte H&M.\nNär vi väl hittat rätt stad söker vi en adress där gatans namngivare, om vi tolkar namnet bokstavligt, kan röra sig åt alla håll på ett schackbräde.\nNumret är detsamma som Sveriges landsnummer om man tar bort plustecknet och den första fyran.",
-        "Nu behöver vi tre svar.\nVilken pjäs är starkast på schackbrädet?\nVilket tal kommer omedelbart efter 38?\nOch vilken bokstav motsvarar grundämnet bor i det periodiska systemets kemiska beteckning?\nSätt ihop svaren på rätt sätt och fundera sedan på vilken familj som börjar se nervös ut.",
-        "Nu är vi så nära att någon i sällskapet förmodligen kan gå resten av vägen utan karta.\nVi söker inte en sevärdhet och inte en restaurang. Vi söker en bostadsadress i Västerås.\nGatan börjar med titeln på Sveriges kvinnliga statschef om Sverige hade haft en regerande sådan. Därefter kommer gatan, talet före 40 och alfabetets andra bokstav."
-      ],
-      "followups": [
-        {
-          "question": "Vilken drottning har gett namn åt den brittiska tidsperiod som sträckte sig över större delen av 1800-talet?",
-          "answer": "Drottning Victoria"
-        },
-        {
-          "question": "39 är delbart med två primtal. Vilka?",
-          "answer": "3 och 13"
-        }
-      ]
-    },
-    {
-      "id": "ee676b56-986d-477a-a1f8-563452f154d7",
-      "type": "music",
-      "title": "Timbuktu",
-      "answer": "",
-      "video": "d6b3aeb4-04eb-46b1-af85-8d47cb4d6b2e.mp4",
-      "musicQuestions": [
-        {
-          "question": "I början hörde vi en snutt från en dansk låt, vad heter den?",
-          "answer": "Natteravn"
-        },
-        {
-          "question": "Även andra låten var dansk och gruppen heter Gasolin.\nVilket grundämne har kemisk beteckning Pb och fanns tidigare i stor utsträckning i bensin?",
-          "answer": "Bly"
-        }
-      ]
-    },
-    {
-      "id": "a7a2c62d-3ee2-4a3f-ab6a-7e26422ad67b",
-      "type": "destination",
-      "title": "Västervik",
-      "answer": "Västervik",
-      "clues": [
-        "Vi lämnar en gammal unionsstad och färdas norrut mot Tjust. Vårt mål har inte alltid legat där det ligger i dag – den som söker stadens äldsta rötter får bege sig ett par mil åt nordväst. Vid dagens infart från havet möter vi resterna av en betydligt mer befäst historia.",
-        "Vi fortsätter mot en stad där Stegeholm vakar över vattnet. Här har både handel och sjöfart satt sina spår, och utanför fastlandet breder en av ostkustens stora skärgårdar ut sig. En av dess mer kända öar bär det korta namnet Idö.",
-        "Musiken kan hjälpa oss vidare. Sedan 1960-talet har några av Sveriges mest kända trubadurer samlats här under sommaren. Hootenanny Singers hör till dem som varit starkt förknippade med traditionen – och en viss medlem skulle senare bli betydligt mer känd i en kvartett.",
-        "Vi är fortfarande i Kalmar län, men betydligt närmare Östergötland än länets residensstad. Namnet på vårt resmål kan delas i två delar: först ett väderstreck och sedan något som både Viken och Hanöbukten är exempel på.",
-        "Nu styr vi rakt mot en stad i norra Småland vars namn börjar med motsatsen till öster och slutar med en mindre havsinbuktning. Vart är vi på väg?"
-      ],
-      "followups": [
-        {
-          "question": "Vi befinner oss i Småland. Vilka tre län innehåller delar av landskapet Småland?",
-          "answer": "Kalmar, Kronoberg och Jönköping"
-        },
-        {
-          "question": "Astrid Lindgrens Vimmerby ligger inte långt från Västervik. Vad hette Astrid i efternamn som ogift?",
-          "answer": "Ericsson"
-        }
-      ]
-    },
-    {
-      "id": "e0d12bd5-363f-4c00-95eb-8609421a3b4d",
-      "type": "music",
-      "title": "Fattig bonddräng",
-      "answer": "",
-      "prompt": "",
-      "video": "44f4d068-0ea0-46fb-be99-a8834188a038.mp4",
-      "musicQuestions": [
-        {
-          "question": "Vem skrev texten till \"Fattig bonddräng\"?",
-          "answer": "Astrid Lindgren"
-        },
-        {
-          "question": "Vem skrev musiken till \"Fattig bonddräng\"?",
-          "answer": "Georg Riedel"
-        }
-      ]
-    },
-    {
-      "id": "eca760d3-2f57-471e-84c6-777de61b7c36",
-      "type": "destination",
-      "title": "Kuşadası",
-      "answer": "Kuşadası",
-      "clues": [
-        "Vi söker en plats vars historia inte alltid burit dagens bevingade namn. Under antiken låg här Neapolis, och långt senare kom platsen att förknippas med en ö som användes för att skydda en viktig hamn. I dag anländer betydligt fredligare flottor till samma trakt.",
-        "Vårt mål ligger vid Egeiska havet, mittemot en grekisk ö som förknippas med både Pythagoras och sött dessertvin. Många som kommer sjövägen stannar dock inte länge, utan fortsätter mot en betydligt äldre stad några mil bort.",
-        "Vi närmar oss en av Turkiets viktigaste kryssningshamnar. Många av passagerarna har siktet inställt på Efesos, där Celsusbiblioteket fortfarande står ståtligt och där resterna av ett av antikens sju underverk finns i närheten. Men det är hamnstaden – inte Efesos – vi söker.",
-        "Nu får turkiskan hjälpa oss. Vårt resmål består av två ord som tillsammans pekar mot djurriket och geografin. Ada betyder \"ö\", medan första delen av namnet är ett djur som kan flyga.",
-        "Då landar vi. Kuş betyder \"fågel\" och ada betyder \"ö\". Vi söker den turkiska semester- och hamnstaden vars namn alltså kan förstås som Fågelön."
-      ],
-      "followups": [
-        {
-          "question": "Om ni beställer en klassisk turkisk döner, vad betyder ordet döner ungefär?",
-          "answer": "Roterande"
-        },
-        {
-          "question": "Turkiet är känt för sitt te, som ofta serveras i små glas. Vilken form brukar glasen ha?",
-          "answer": "Timglas"
-        }
-      ]
-    },
-    {
-      "id": "c987ae45-03a0-4e2c-b241-582b20811526",
-      "type": "music",
-      "title": "Dina ögon",
-      "answer": "",
-      "video": "8e4d51ae-dbed-4ee1-a2f2-5ad47fbb51bb.mp4",
-      "musicQuestions": [
-        {
-          "question": "Vilken svensk grupp har gjort låten?",
-          "answer": "Eldkvarn"
-        },
-        {
-          "question": "Låter framfördes av fantastiska Dina ögon. Vilken del av ögat reglerar hur mycket ljus som kommer in genom pupillen?",
-          "answer": "Iris"
-        }
-      ]
-    }
-  ],
   "game": {
     "phase": "waiting",
     "questionId": null,
     "clueIndex": 0,
     "answers": {},
-    "round": 32
+    "round": 45,
+    "lastQuestionId": "d1a03eb4-e205-4a75-861a-fc06701a9695"
   },
   "scores": {
-    "dressin": 22,
-    "forsta": 19
-  }
+    "dressin": 0,
+    "forsta": 3,
+    "x2000": 0,
+    "malartag": 0,
+    "loket": 0
+  },
+  "activeTeams": [
+    "malartag",
+    "loket"
+  ],
+  "tv": {
+    "mode": "game",
+    "videoSeq": 0,
+    "videoAction": null
+  },
+  "played": [
+    "d1a03eb4-e205-4a75-861a-fc06701a9695",
+    "05d6db09-69a7-40b0-98dc-7454e6c73b0a",
+    "5446fe07-7689-40af-83d2-cb4c41c3da28"
+  ],
+  "lobby": true,
+  "sets": [
+    {
+      "id": "b174e19d-5bde-4d14-a89d-95d645108897",
+      "name": "Standard",
+      "questions": [
+        {
+          "id": "d1a03eb4-e205-4a75-861a-fc06701a9695",
+          "type": "closest",
+          "title": "stoclholm",
+          "answer": "",
+          "points": 3,
+          "scope": "world",
+          "places": [
+            {
+              "clue": "ledtråd",
+              "image": "",
+              "answerLat": 59.17377,
+              "answerLon": 16.2969,
+              "viewport": {
+                "west": -180,
+                "east": 180,
+                "south": -60,
+                "north": 85
+              }
+            }
+          ],
+          "target": 3
+        },
+        {
+          "id": "05d6db09-69a7-40b0-98dc-7454e6c73b0a",
+          "type": "destination",
+          "title": "Malingsbo-Kloten",
+          "answer": "Malingsbo-Kloten",
+          "clues": [
+            "Vi lämnar gurkornas stad och styr mot ett mål där en hammare en gång betydde mer än en spik. Resan för oss från ett gammalt centrum för metallhandel mot en plats där samma metall snarare bearbetades. Vårt mål har genom århundradena varit betydligt bättre på att smida än på att växa.",
+            "Vi fortsätter mot en plats där Fredrik I:s tid lämnade ett ovanligt tydligt avtryck. Här kunde den välbeställde en gång blicka ut över både arbete och ägor från betydligt bekvämare omgivningar än de som stod för hammarslagen. I dag är tystnaden förmodligen en större tillgång än järnet.",
+            "Nu börjar vi närma oss. Vårt mål befinner sig i en trakt där tre landskap nästan får trängas om utrymmet, och ortens närmaste större samhälle har ett namn som för tankarna till både metallhantverk och människokroppen. Vi ska dock inte dit.",
+            "Naturälskaren har kanske redan tryckt. Orten delar sitt namn med ena halvan av ett mycket stort skyddat naturområde. Den andra halvan har ett namn som också kan betyda en rund, kompakt massa. Här finns gott om skog, sjöar och möjligheter att få något på kroken.",
+            "Nu söker vi en liten ort i södra Dalarna, i Smedjebackens kommun. Lägg Malings- framför -bo, så har ni destinationen."
+          ],
+          "films": [
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "Skogarna kring Malingsbo har flera av Sveriges stora vilda däggdjur. Vilket är Sveriges största hjortdjur?",
+                  "answer": "Älg"
+                },
+                {
+                  "question": "I Malingsbo–Kloten finns gott om fiskevatten. Säg en fiskart som finns i svenska insjöar och som inte är en rovfisk?",
+                  "answer": "Mört"
+                }
+              ]
+            },
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "",
+                  "answer": ""
+                },
+                {
+                  "question": "",
+                  "answer": ""
+                }
+              ]
+            },
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "",
+                  "answer": ""
+                },
+                {
+                  "question": "",
+                  "answer": ""
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "5446fe07-7689-40af-83d2-cb4c41c3da28",
+          "type": "music",
+          "title": "Instant repeater 99",
+          "answer": "",
+          "video": "8f1989c0-a3ee-4516-874f-7e20b5c74239.mp4",
+          "musicQuestions": [
+            {
+              "question": "Vad heter gruppen som gjorde huvudlåten?",
+              "answer": "Soundtrack of our lives"
+            },
+            {
+              "question": "Vi hörde en liten snutt från en annan artist, nämligen Loreen. Hon vill nog inte att henns låtar sprids på olagliga sidor...\nVilken fildelningstjänst lanserades 1999 och förändrade musikbranschen genom att låta användare dela MP3-filer?",
+              "answer": "Napster"
+            }
+          ]
+        },
+        {
+          "id": "94847a6a-a5dc-4c1e-b8a4-b9c50a4283c7",
+          "type": "destination",
+          "title": "Drottninggatan 39B",
+          "answer": "Drottninggatan 39B",
+          "clues": [
+            "Vi styr mot en destination där vår värdinna, åtminstone språkligt, har avancerat betydligt längre i karriären än de flesta.\nFör att hitta rätt nummer kan en kemist vara till hjälp: sök grundämnet som fått sitt namn efter ett land i Sydamerika och notera dess atomnummer.\nMen inte ens då är vi riktigt framme. Vår slutstation kräver ytterligare en distinktion.",
+            "Vi fortsätter mot en plats vars första del skulle göra Silvia mer träffsäker än Carl XVI Gustaf.\nSiffrorna hittar vi den här gången på en amerikansk president: räkna fram vilken i ordningen Jimmy Carter var.\nDen sista pusselbiten är däremot varken kunglig eller amerikansk. Där räcker det att komma tvåa.",
+            "Destinationen finns i en stad där H&M öppnade sin allra första butik, men det namn som stod på skylten då var inte H&M.\nNär vi väl hittat rätt stad söker vi en adress där gatans namngivare, om vi tolkar namnet bokstavligt, kan röra sig åt alla håll på ett schackbräde.\nNumret är detsamma som Sveriges landsnummer om man tar bort plustecknet och den första fyran.",
+            "Nu behöver vi tre svar.\nVilken pjäs är starkast på schackbrädet?\nVilket tal kommer omedelbart efter 38?\nOch vilken bokstav motsvarar grundämnet bor i det periodiska systemets kemiska beteckning?\nSätt ihop svaren på rätt sätt och fundera sedan på vilken familj som börjar se nervös ut.",
+            "Nu är vi så nära att någon i sällskapet förmodligen kan gå resten av vägen utan karta.\nVi söker inte en sevärdhet och inte en restaurang. Vi söker en bostadsadress i Västerås.\nGatan börjar med titeln på Sveriges kvinnliga statschef om Sverige hade haft en regerande sådan. Därefter kommer gatan, talet före 40 och alfabetets andra bokstav."
+          ],
+          "films": [
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "Vilken drottning har gett namn åt den brittiska tidsperiod som sträckte sig över större delen av 1800-talet?",
+                  "answer": "Drottning Victoria"
+                },
+                {
+                  "question": "39 är delbart med två primtal. Vilka?",
+                  "answer": "3 och 13"
+                }
+              ]
+            },
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "",
+                  "answer": ""
+                },
+                {
+                  "question": "",
+                  "answer": ""
+                }
+              ]
+            },
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "",
+                  "answer": ""
+                },
+                {
+                  "question": "",
+                  "answer": ""
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ee676b56-986d-477a-a1f8-563452f154d7",
+          "type": "music",
+          "title": "Timbuktu",
+          "answer": "",
+          "video": "d6b3aeb4-04eb-46b1-af85-8d47cb4d6b2e.mp4",
+          "musicQuestions": [
+            {
+              "question": "I början hörde vi en snutt från en dansk låt, vad heter den?",
+              "answer": "Natteravn"
+            },
+            {
+              "question": "Även andra låten var dansk och gruppen heter Gasolin.\nVilket grundämne har kemisk beteckning Pb och fanns tidigare i stor utsträckning i bensin?",
+              "answer": "Bly"
+            }
+          ]
+        },
+        {
+          "id": "a7a2c62d-3ee2-4a3f-ab6a-7e26422ad67b",
+          "type": "destination",
+          "title": "Västervik",
+          "answer": "Västervik",
+          "clues": [
+            "Vi lämnar en gammal unionsstad och färdas norrut mot Tjust. Vårt mål har inte alltid legat där det ligger i dag – den som söker stadens äldsta rötter får bege sig ett par mil åt nordväst. Vid dagens infart från havet möter vi resterna av en betydligt mer befäst historia.",
+            "Vi fortsätter mot en stad där Stegeholm vakar över vattnet. Här har både handel och sjöfart satt sina spår, och utanför fastlandet breder en av ostkustens stora skärgårdar ut sig. En av dess mer kända öar bär det korta namnet Idö.",
+            "Musiken kan hjälpa oss vidare. Sedan 1960-talet har några av Sveriges mest kända trubadurer samlats här under sommaren. Hootenanny Singers hör till dem som varit starkt förknippade med traditionen – och en viss medlem skulle senare bli betydligt mer känd i en kvartett.",
+            "Vi är fortfarande i Kalmar län, men betydligt närmare Östergötland än länets residensstad. Namnet på vårt resmål kan delas i två delar: först ett väderstreck och sedan något som både Viken och Hanöbukten är exempel på.",
+            "Nu styr vi rakt mot en stad i norra Småland vars namn börjar med motsatsen till öster och slutar med en mindre havsinbuktning. Vart är vi på väg?"
+          ],
+          "films": [
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "Vi befinner oss i Småland. Vilka tre län innehåller delar av landskapet Småland?",
+                  "answer": "Kalmar, Kronoberg och Jönköping"
+                },
+                {
+                  "question": "Astrid Lindgrens Vimmerby ligger inte långt från Västervik. Vad hette Astrid i efternamn som ogift?",
+                  "answer": "Ericsson"
+                }
+              ]
+            },
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "",
+                  "answer": ""
+                },
+                {
+                  "question": "",
+                  "answer": ""
+                }
+              ]
+            },
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "",
+                  "answer": ""
+                },
+                {
+                  "question": "",
+                  "answer": ""
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "e0d12bd5-363f-4c00-95eb-8609421a3b4d",
+          "type": "music",
+          "title": "Fattig bonddräng",
+          "answer": "",
+          "prompt": "",
+          "video": "44f4d068-0ea0-46fb-be99-a8834188a038.mp4",
+          "musicQuestions": [
+            {
+              "question": "Vem skrev texten till \"Fattig bonddräng\"?",
+              "answer": "Astrid Lindgren"
+            },
+            {
+              "question": "Vem skrev musiken till \"Fattig bonddräng\"?",
+              "answer": "Georg Riedel"
+            }
+          ]
+        },
+        {
+          "id": "eca760d3-2f57-471e-84c6-777de61b7c36",
+          "type": "destination",
+          "title": "Kuşadası",
+          "answer": "Kuşadası",
+          "clues": [
+            "Vi söker en plats vars historia inte alltid burit dagens bevingade namn. Under antiken låg här Neapolis, och långt senare kom platsen att förknippas med en ö som användes för att skydda en viktig hamn. I dag anländer betydligt fredligare flottor till samma trakt.",
+            "Vårt mål ligger vid Egeiska havet, mittemot en grekisk ö som förknippas med både Pythagoras och sött dessertvin. Många som kommer sjövägen stannar dock inte länge, utan fortsätter mot en betydligt äldre stad några mil bort.",
+            "Vi närmar oss en av Turkiets viktigaste kryssningshamnar. Många av passagerarna har siktet inställt på Efesos, där Celsusbiblioteket fortfarande står ståtligt och där resterna av ett av antikens sju underverk finns i närheten. Men det är hamnstaden – inte Efesos – vi söker.",
+            "Nu får turkiskan hjälpa oss. Vårt resmål består av två ord som tillsammans pekar mot djurriket och geografin. Ada betyder \"ö\", medan första delen av namnet är ett djur som kan flyga.",
+            "Då landar vi. Kuş betyder \"fågel\" och ada betyder \"ö\". Vi söker den turkiska semester- och hamnstaden vars namn alltså kan förstås som Fågelön."
+          ],
+          "films": [
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "Om ni beställer en klassisk turkisk döner, vad betyder ordet döner ungefär?",
+                  "answer": "Roterande"
+                },
+                {
+                  "question": "Turkiet är känt för sitt te, som ofta serveras i små glas. Vilken form brukar glasen ha?",
+                  "answer": "Timglas"
+                }
+              ]
+            },
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "",
+                  "answer": ""
+                },
+                {
+                  "question": "",
+                  "answer": ""
+                }
+              ]
+            },
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "",
+                  "answer": ""
+                },
+                {
+                  "question": "",
+                  "answer": ""
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "c987ae45-03a0-4e2c-b241-582b20811526",
+          "type": "music",
+          "title": "Dina ögon",
+          "answer": "",
+          "video": "8e4d51ae-dbed-4ee1-a2f2-5ad47fbb51bb.mp4",
+          "musicQuestions": [
+            {
+              "question": "Vilken svensk grupp har gjort låten?",
+              "answer": "Eldkvarn"
+            },
+            {
+              "question": "Låter framfördes av fantastiska Dina ögon. Vilken del av ögat reglerar hur mycket ljus som kommer in genom pupillen?",
+              "answer": "Iris"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "5c01ba8a-160d-45d0-84e4-dbdb7e2d7b64",
+      "name": "Exempelset: Kiruna till Lund",
+      "questions": [
+        {
+          "id": "b7f3a3f1-bc85-4300-b3c8-7e1a263e54e7",
+          "type": "destination",
+          "title": "Kiruna",
+          "answer": "Kiruna",
+          "clues": [
+            "Vi reser mot en stad som är på väg att flytta. Marken här har gett mer än den tagit, men priset är att centrum sakta förskjuts flera kilometer österut.",
+            "Stadens kyrka, en gång framröstad till Sveriges vackraste byggnad, har lyfts upp i ett stycke och körts på hjul till en ny plats.",
+            "Från en rymdbas strax utanför staden skjuts forskningsraketer upp, och inom kommunens gränser ligger Sveriges högsta fjäll.",
+            "Här skiner midnattssolen från slutet av maj till mitten av juli, och Malmbanan förbinder oss med en isfri hamn på andra sidan riksgränsen.",
+            "Nu söker vi Sveriges nordligaste stad, hem åt LKAB:s enorma järnmalmsgruva. Vart är vi på väg?"
+          ],
+          "films": [
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "Vilket fjäll är Sveriges högsta?",
+                  "answer": "Kebnekaise"
+                },
+                {
+                  "question": "Vad står förkortningen LKAB för?",
+                  "answer": "Luossavaara-Kiirunavaara Aktiebolag"
+                }
+              ]
+            },
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "Ishotellet i Jukkasjärvi byggs upp på nytt varje vinter med is från en närliggande älv. Vilken?",
+                  "answer": "Torne älv"
+                },
+                {
+                  "question": "I vilket land ligger Malmbanans västra slutstation Narvik?",
+                  "answer": "Norge"
+                }
+              ]
+            },
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "Kiruna heter Giron på samiska. Vilken fågel betyder det?",
+                  "answer": "Fjällripa"
+                },
+                {
+                  "question": "Under vilken månad råder polarnatt i Kiruna, när solen inte går upp alls?",
+                  "answer": "December"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "b12b7cd7-9bee-468b-8f51-242ddec1778a",
+          "type": "music",
+          "title": "Dancing Queen – ABBA (ladda upp klipp)",
+          "answer": "",
+          "video": "",
+          "musicQuestions": [
+            {
+              "question": "Vilken grupp hör vi?",
+              "answer": "ABBA"
+            },
+            {
+              "question": "Låten framfördes för kungaparet på en gala kvällen före deras bröllop 1976. Vad heter drottningen?",
+              "answer": "Silvia"
+            }
+          ]
+        },
+        {
+          "id": "e02f749c-2c84-4ec3-b309-d01caf89fb09",
+          "type": "destination",
+          "title": "Visby",
+          "answer": "Visby",
+          "clues": [
+            "Vi siktar mot en stad där ett mäktigt handelsförbund en gång satte tonen – köpmännen här talade lika gärna lågtyska som svenska.",
+            "År 1361 kom en dansk kung hit och brandskattade staden. Enligt sägnen fick borgarna fylla tre stora ölkar med silver och guld.",
+            "Staden omges av en ringmur på över tre kilometer och har sedan 1995 en plats på Unescos världsarvslista.",
+            "På försommaren fylls staden av politiker under en hel vecka, och i augusti klär sig tusentals besökare i medeltidskläder.",
+            "Nu söker vi residensstaden på Sveriges största ö – rosornas och ruinernas stad. Vart är vi på väg?"
+          ],
+          "films": [
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "Vad kallas de små hästar som har levt på Gotland sedan urminnes tider?",
+                  "answer": "Russ (gotlandsruss)"
+                },
+                {
+                  "question": "Vilken statsminister talade från ett lastbilsflak i Almedalen 1968 och anses ha startat traditionen?",
+                  "answer": "Olof Palme"
+                }
+              ]
+            },
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "Vilken ö norr om Gotland är känd för sina raukar och var Ingmar Bergmans hem?",
+                  "answer": "Fårö"
+                },
+                {
+                  "question": "Vilket gotländskt bakverk görs på risgrynsgröt och färgas gult?",
+                  "answer": "Saffranspannkaka"
+                }
+              ]
+            },
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "Vilken barnboksfigur bodde i Villa Villekulla, som spelades in strax utanför Visby?",
+                  "answer": "Pippi Långstrump"
+                },
+                {
+                  "question": "Vad heter Visbys domkyrka, den enda medeltida kyrkan i staden som fortfarande används?",
+                  "answer": "Sankta Maria domkyrka"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "1a2980bb-0a69-4460-91f0-5097a9cf8e08",
+          "type": "closest",
+          "title": "Närmast vinner: jorden runt",
+          "answer": "",
+          "points": 3,
+          "target": 3,
+          "scope": "world",
+          "places": [
+            {
+              "clue": "Sätt nålen där världens högsta berg ligger.",
+              "image": "",
+              "answerLat": 27.9881,
+              "answerLon": 86.925,
+              "viewport": {
+                "west": 40,
+                "east": 140,
+                "south": -10,
+                "north": 60
+              }
+            },
+            {
+              "clue": "Sätt nålen där Sverige, Norge och Finland möts.",
+              "image": "",
+              "answerLat": 69.0599,
+              "answerLon": 20.5487,
+              "viewport": {
+                "west": 0,
+                "east": 35,
+                "south": 54,
+                "north": 72
+              }
+            },
+            {
+              "clue": "Sätt nålen där Påskön och dess moai-statyer ligger.",
+              "image": "",
+              "answerLat": -27.1127,
+              "answerLon": -109.3497,
+              "viewport": {
+                "west": -180,
+                "east": -60,
+                "south": -60,
+                "north": 10
+              }
+            },
+            {
+              "clue": "Sätt nålen där Eiffeltornet står.",
+              "image": "",
+              "answerLat": 48.8584,
+              "answerLon": 2.2945,
+              "viewport": {
+                "west": -12,
+                "east": 35,
+                "south": 35,
+                "north": 72
+              }
+            },
+            {
+              "clue": "Sätt nålen på Afrikas högsta berg, Kilimanjaro.",
+              "image": "",
+              "answerLat": -3.0674,
+              "answerLon": 37.3556,
+              "viewport": {
+                "west": -20,
+                "east": 55,
+                "south": -36,
+                "north": 38
+              }
+            },
+            {
+              "clue": "Sätt nålen där Frihetsgudinnan står.",
+              "image": "",
+              "answerLat": 40.6892,
+              "answerLon": -74.0445,
+              "viewport": {
+                "west": -130,
+                "east": -60,
+                "south": 15,
+                "north": 60
+              }
+            },
+            {
+              "clue": "Sätt nålen på den röda klippan Uluru.",
+              "image": "",
+              "answerLat": -25.3444,
+              "answerLon": 131.0369,
+              "viewport": {
+                "west": 110,
+                "east": 160,
+                "south": -45,
+                "north": -8
+              }
+            }
+          ]
+        },
+        {
+          "id": "da1a91e3-3529-40dc-8824-9325c79cbe2f",
+          "type": "destination",
+          "title": "Reykjavik",
+          "answer": "Reykjavik",
+          "clues": [
+            "Vi är på väg mot en huvudstad där husen värms med vatten ur marken – och där röken som gav platsen dess namn i själva verket var ånga.",
+            "År 1986 möttes två supermakters ledare i ett vitt hus vid havet här för att förhandla om kärnvapen.",
+            "Stadens största kyrka reser sig över hustaken och är formad för att påminna om basaltpelare.",
+            "Landets parlament, Alltinget, grundades år 930 och räknas som ett av världens äldsta – men det samlades inte här utan på slätten vid Þingvellir.",
+            "Nu landar vi i världens nordligaste huvudstad i en självständig stat, huvudstad på sagornas ö. Vart har vi rest?"
+          ],
+          "films": [
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "Vilken vulkan fick ett utbrott 2010 som stoppade stora delar av flygtrafiken i Europa?",
+                  "answer": "Eyjafjallajökull"
+                },
+                {
+                  "question": "Vilken isländsk artist slog igenom med bandet The Sugarcubes?",
+                  "answer": "Björk"
+                }
+              ]
+            },
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "Vad heter Islands valuta?",
+                  "answer": "Isländsk krona"
+                },
+                {
+                  "question": "Ungefär hur många invånare har Island: 40 000, 400 000 eller 4 miljoner?",
+                  "answer": "400 000"
+                }
+              ]
+            },
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "Vad heter den berömda geotermiska badanläggningen på Reykjaneshalvön?",
+                  "answer": "Blå lagunen"
+                },
+                {
+                  "question": "Vilket år blev Island en självständig republik?",
+                  "answer": "1944"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "964d6a98-f1b6-441c-a671-8f0f4ff7e67e",
+          "type": "destination",
+          "title": "Lund",
+          "answer": "Lund",
+          "clues": [
+            "Vi reser mot en stad som grundades omkring år 990 och som en gång var säte för ärkebiskopen över hela Norden.",
+            "I stadens domkyrka finns ett astronomiskt ur från 1400-talet, och i kryptan sägs en jätte vid namn Finn stå förstenad.",
+            "Här ligger ett av Nordens äldsta universitet, grundat 1666 – bara några år efter att landskapet blivit svenskt.",
+            "Vart fjärde år lockar karnevalen tiotusentals besökare, och i stadens nordöstra utkant byggs forskningsanläggningen ESS.",
+            "Nu söker vi Skånes stora universitetsstad, bara en kort tågresa från Malmö. Vart är vi på väg?"
+          ],
+          "films": [
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "Vilket år blev Skåne svenskt genom freden i Roskilde?",
+                  "answer": "1658"
+                },
+                {
+                  "question": "Vilket förpackningsföretag, känt för sina mjölkpaket, grundades i Lund 1951?",
+                  "answer": "Tetra Pak"
+                }
+              ]
+            },
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "Vilken trådlös teknik utvecklades av Ericsson i Lund och är uppkallad efter en dansk kung?",
+                  "answer": "Bluetooth"
+                },
+                {
+                  "question": "Vad kallas studenternas föreningar i Lund och Uppsala, som ofta är uppkallade efter landskap?",
+                  "answer": "Nationer"
+                }
+              ]
+            },
+            {
+              "video": "",
+              "questions": [
+                {
+                  "question": "Vilken bro öppnade år 2000 och förbinder Skåne med Danmark?",
+                  "answer": "Öresundsbron"
+                },
+                {
+                  "question": "Vilken huvudstad ligger på andra sidan bron?",
+                  "answer": "Köpenhamn"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "setId": "b174e19d-5bde-4d14-a89d-95d645108897"
 }

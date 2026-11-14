@@ -180,3 +180,11 @@ body.fullmap .team-score,body.fullmap .exit-button{display:none}
 .closest-hud p{margin:0;font-size:.85rem;font-weight:700;line-height:1.2}
 .closest-full .local-map-controls{top:auto;bottom:max(1rem,env(safe-area-inset-bottom));right:1rem}.closest-full .local-map-controls button{width:48px;height:48px;font-size:1.7rem}
 .closest-full .real-map-attribution{bottom:auto;top:0;right:0;opacity:.6}
+/* Frågeset och Närmast vinner med flera platser */
+.cr-sets{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem;margin:0 0 1rem;padding-bottom:1rem;border-bottom:1px solid var(--line)}.cr-sets label{display:flex;align-items:center;gap:.5rem;margin:0;font-weight:700}.cr-sets select{margin:0;min-width:14rem}
+.cr-grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.cr-place.sel{border-color:var(--amber);box-shadow:0 0 0 1px var(--amber)}.cr-place-actions{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem}.cr-place-actions .hint{margin:0 auto 0 0}
+.cr-coords{display:block;color:var(--muted);font-size:.85rem}
+.closest-wins{display:flex;flex-wrap:wrap;justify-content:center;gap:.5rem;margin:.75rem 0}.closest-wins span{display:inline-flex;align-items:center;gap:.4rem;padding:.3rem .7rem;border-radius:999px;background:#0001;font-weight:700}.closest-wins i{width:.7rem;height:.7rem;border-radius:50%;background:var(--team)}
+.cr .closest-wins span{background:var(--panel);border:1px solid var(--line)}
+.closest-final{margin:0 0 .75rem;padding:.75rem 1rem;border-radius:12px;background:#ffc83d;color:#1a1405;font-size:1.3rem;font-weight:800;text-align:center}

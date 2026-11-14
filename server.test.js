@@ -12,6 +12,7 @@ const codes = JSON.parse(fs.readFileSync(path.join(testDataDir, 'codes.json')));
 after(() => fs.rmSync(testDataDir,{recursive:true,force:true}));
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const game = JSON.parse(fs.readFileSync(path.join(testDataDir, 'game.json')));
+const setQuestions = () => JSON.parse(fs.readFileSync(path.join(testDataDir,'game.json'))).sets[0].questions;
 
 test('lag kan inte läsa skyddade vyer, facit eller andra lagets svar', async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -25,13 +26,13 @@ test('lag kan inte läsa skyddade vyer, facit eller andra lagets svar', async ()
     assert.equal((await request('/view/host',forgedRole.headers.get('set-cookie').split(';')[0])).status,403);
     const host = await login('host'), dressin = await login('dressin'), forsta = await login('forsta');
     const screen = await login('screen');
-    const q = game.questions.find(x => x.type === 'destination');
+    const q = game.sets[0].questions.find(x => x.type === 'destination');
     assert.equal((await request('/api/question/move',dressin,{id:q.id,direction:1})).status,403);
     assert.equal((await request('/api/question/move',host,{id:q.id,direction:-1})).status,409);
     const moved = await request('/api/question/move',host,{id:q.id,direction:1});
     assert.equal(moved.status,200);
     assert.equal((await moved.json()).questions[1].id,q.id);
-    assert.equal(JSON.parse(fs.readFileSync(path.join(testDataDir,'game.json'))).questions[1].id,q.id);
+    assert.equal(setQuestions()[1].id,q.id);
     assert.equal((await request('/api/game/start', host, {id:q.id})).status, 200);
     assert.equal((await request('/view/host', dressin)).status, 403);
     assert.equal((await request('/view/screen', dressin)).status, 403);
@@ -260,7 +261,10 @@ test('lag kan inte läsa skyddade vyer, facit eller andra lagets svar', async ()
     assert.deepEqual(mapStage.result.winners,['dressin']);
     assert.ok(mapStage.result.distances.dressin < mapStage.result.distances.forsta);
     const afterScore=(await (await request('/api/state',host)).json()).scores;
-    assert.equal(afterScore.dressin,13);
+    assert.equal(afterScore.dressin,6); // en plats: platserna tar slut, laget med flest vinster får standardpoängen 3
+    assert.equal(mapStage.done,true);
+    assert.deepEqual(mapStage.champions,['dressin']);
+    assert.equal(setQuestions().find(x=>x.title===closestQuestion.title).places[0].image,image);
     assert.equal(afterScore.forsta,4);
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
@@ -280,7 +284,7 @@ test('spelledaren väljer 2–5 aktiva lag', async () => {
     assert.equal((await request('/api/teams', host, {teams:['dressin','forsta','x2000']})).status, 200);
     assert.equal((await request('/api/login', null, {code:codes.loket})).status, 403);
     assert.equal((await request('/api/score/add', host, {team:'loket',delta:1})).status, 400);
-    const q = game.questions.find(x => x.type === 'destination');
+    const q = game.sets[0].questions.find(x => x.type === 'destination');
     assert.equal((await request('/api/game/start', host, {id:q.id})).status, 200);
     assert.equal((await request('/api/teams', host, {teams:['dressin','forsta']})).status, 409);
     assert.equal((await request('/api/game/wait', host, {})).status, 200);
@@ -443,7 +447,11 @@ test('gamla följdfrågor flyttas till Resefilm 1 när servern startar', () => {
   try {
     fs.writeFileSync(path.join(dir,'game.json'), JSON.stringify({questions:[{id:'a',type:'destination',title:'T',answer:'A',clues:['1','2','3','4','5'],followups:[{question:'F1',answer:'S1'},{question:'F2',answer:'S2'}]}],game:{phase:'waiting',questionId:null,clueIndex:0,answers:{},round:0}}));
     require('node:child_process').execFileSync(process.execPath, ['-e', 'require("./server.js")'], {cwd:__dirname, env:{...process.env, DATA_DIR:dir}, stdio:'ignore'});
-    const q = JSON.parse(fs.readFileSync(path.join(dir,'game.json'))).questions[0];
+    const saved = JSON.parse(fs.readFileSync(path.join(dir,'game.json')));
+    assert.equal(Object.hasOwn(saved,'questions'),false);
+    assert.equal(saved.sets.length,1);
+    assert.equal(saved.setId,saved.sets[0].id);
+    const q = saved.sets[0].questions[0];
     assert.equal(Object.hasOwn(q,'followups'),false);
     assert.equal(q.films.length,3);
     assert.deepEqual(q.films[0],{video:'',questions:[{question:'F1',answer:'S1'},{question:'F2',answer:'S2'}]});
@@ -546,5 +554,97 @@ test('lobbyn: lag väljs med ett tryck, ett lag per telefon, spelledaren frigör
     assert.equal((await (await request('/api/state', cookieOf(rejoined))).json()).type,after.questions[0].type);
     assert.equal((await request('/api/join', cookieOf(rejoined), {team:'forsta'})).status,409);
     assert.ok(JSON.parse(fs.readFileSync(path.join(testDataDir,'sessions.json'))));
+  } finally { await new Promise(resolve => server.close(resolve)); }
+});
+
+test('Närmast vinner med flera platser: först till målet vinner, ställningen följer med mellan platserna', async () => {
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const request = async (p, cookie, data) => fetch(base + p, {method:data ? 'POST' : 'GET', headers:{...(cookie ? {Cookie:cookie} : {}), ...(data ? {'Content-Type':'application/json'} : {})}, body:data ? JSON.stringify(data) : undefined});
+  const state = async cookie => (await request('/api/state', cookie)).json();
+  try {
+    const login = async role => { const r = await request('/api/login', null, {code:codes[role]}); assert.equal(r.status,200); return r.headers.get('set-cookie').split(';')[0]; };
+    const host = await login('host');
+    assert.equal((await request('/api/game/wait', host, {})).status, 200);
+    assert.equal((await request('/api/teams', host, {teams:['dressin','forsta']})).status, 200);
+    const [dressin, forsta, screen] = [await login('dressin'), await login('forsta'), await login('screen')];
+    const viewport = {west:17,east:19,south:59,north:60};
+    const place = (clue, lat, lon) => ({clue, answerLat:lat, answerLon:lon, viewport});
+    const places = [place('A',59.3,18),place('B',59.5,18.5),place('C',59.7,17.5),place('D',59.2,18.2),place('E',59.9,18.9)];
+    assert.equal((await request('/api/question/save',host,{type:'closest',title:'Först till två',target:2,points:3,places:[...places.slice(0,1),{clue:'',answerLat:59.3,answerLon:18,viewport}]})).status,400);
+    assert.equal((await request('/api/question/save',host,{type:'closest',title:'Först till två',target:0,points:3,places})).status,400);
+    const saved = await request('/api/question/save',host,{type:'closest',title:'Först till två',target:2,points:3,places});
+    assert.equal(saved.status,200);
+    const q = (await saved.json()).questions.find(x => x.title === 'Först till två');
+    assert.equal(q.places.length,5);
+    assert.equal((await request('/api/game/start',host,{id:q.id})).status,200);
+    const before = (await state(host)).scores;
+    const playPlace = async (dressinPin, forstaPin) => {
+      const round = (await state(dressin)).round;
+      assert.equal((await request('/api/game/closest-stage',host,{stage:1})).status,200);
+      assert.equal((await request('/api/closest-answer',dressin,{round,...dressinPin})).status,200);
+      assert.equal((await request('/api/closest-answer',forsta,{round,...forstaPin})).status,200);
+      await sleep(400);
+      assert.equal((await request('/api/game/closest-stage',host,{stage:2})).status,409); // timern har redan visat nålarna
+      assert.equal((await request('/api/game/closest-stage',host,{stage:3})).status,200);
+      return state(screen);
+    };
+    let s = await state(screen);
+    assert.equal(s.place,1); assert.equal(s.placeCount,5); assert.equal(s.target,2); assert.equal(s.clue,'A');
+    assert.equal(Object.hasOwn(s,'correct'),false);
+    assert.equal((await request('/api/game/closest-next',host,{})).status,409); // platsen är inte avgjord än
+    s = await playPlace({lat:59.3,lon:18},{lat:59.9,lon:17.1});
+    assert.deepEqual(s.wins,{dressin:1}); assert.equal(s.done,false); assert.equal(s.correct.lat,59.3);
+    assert.equal((await state(host)).scores.dressin,before.dressin);
+    assert.equal((await request('/api/game/closest-next',host,{})).status,200);
+    s = await state(screen);
+    assert.equal(s.place,2); assert.equal(s.stage,0); assert.equal(s.clue,'B'); assert.equal(Object.hasOwn(s,'pins'),false);
+    assert.deepEqual((await state(dressin)).wins,{dressin:1});
+    s = await playPlace({lat:59.1,lon:17.1},{lat:59.5,lon:18.5});
+    assert.deepEqual(s.wins,{dressin:1,forsta:1}); assert.equal(s.done,false);
+    assert.equal((await request('/api/game/closest-next',host,{})).status,200);
+    s = await playPlace({lat:59.7,lon:17.5},{lat:59.1,lon:18.9});
+    assert.equal(s.done,true); assert.deepEqual(s.champions,['dressin']); assert.equal(s.wins.dressin,2);
+    assert.equal((await request('/api/game/closest-next',host,{})).status,409);
+    const after = (await state(host)).scores;
+    assert.equal(after.dressin,before.dressin+3);
+    assert.equal(after.forsta,before.forsta);
+    assert.equal((await request('/api/game/wait',host,{})).status,200);
+  } finally { await new Promise(resolve => server.close(resolve)); }
+});
+
+test('frågeset: spelledaren skapar, kopierar, byter, byter namn på och tar bort set', async () => {
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const request = async (p, cookie, data) => fetch(base + p, {method:data ? 'POST' : 'GET', headers:{...(cookie ? {Cookie:cookie} : {}), ...(data ? {'Content-Type':'application/json'} : {})}, body:data ? JSON.stringify(data) : undefined});
+  try {
+    const login = async role => { const r = await request('/api/login', null, {code:codes[role]}); assert.equal(r.status,200); return r.headers.get('set-cookie').split(';')[0]; };
+    const host = await login('host'), dressin = await login('dressin');
+    assert.equal((await request('/api/game/wait', host, {})).status, 200);
+    let s = await (await request('/api/state', host)).json();
+    const first = s.setId, firstCount = s.questions.length;
+    assert.equal(s.sets.length,1);
+    assert.equal(Object.hasOwn(await (await request('/api/state', dressin)).json(),'sets'),false);
+    assert.equal((await request('/api/sets/create', dressin, {name:'Hack'})).status,403);
+    assert.equal((await request('/api/sets/create', host, {name:'  '})).status,400);
+    s = await (await request('/api/sets/create', host, {name:'Kväll 2'})).json();
+    assert.notEqual(s.setId,first); assert.equal(s.questions.length,0); assert.deepEqual(s.played,[]);
+    const dest = {type:'destination',title:'Ny resa',answer:'Lund',clues:['1','2','3','4','5']};
+    s = await (await request('/api/question/save', host, dest)).json();
+    assert.deepEqual(s.questions.map(q=>q.title),['Ny resa']);
+    assert.equal(s.sets.find(x=>x.id===first).count,firstCount);
+    const copy = await (await request('/api/sets/create', host, {name:'Kopia',copyFrom:s.setId})).json();
+    assert.equal(copy.questions.length,1); assert.notEqual(copy.questions[0].id,s.questions[0].id);
+    assert.equal((await request('/api/sets/rename', host, {id:copy.setId,name:'Kopia B'})).status,200);
+    assert.equal((await request('/api/sets/delete', host, {id:copy.setId})).status,409); // valt set
+    s = await (await request('/api/sets/select', host, {id:first})).json();
+    assert.equal(s.setId,first); assert.equal(s.questions.length,firstCount);
+    assert.equal((await request('/api/sets/delete', host, {id:copy.setId})).status,200);
+    const file = JSON.parse(fs.readFileSync(path.join(testDataDir,'game.json')));
+    assert.deepEqual(file.sets.map(x=>x.name),['Standard','Kväll 2']);
+    assert.equal(file.setId,first); assert.equal(Object.hasOwn(file,'questions'),false);
+    assert.equal((await request('/api/game/start', host, {id:s.questions.find(q=>q.type==='destination').id})).status,200);
+    assert.equal((await request('/api/sets/select', host, {id:file.sets[1].id})).status,409); // inte mitt i en fråga
+    assert.equal((await request('/api/game/wait', host, {})).status,200);
   } finally { await new Promise(resolve => server.close(resolve)); }
 });

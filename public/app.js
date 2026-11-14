@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 const app = document.querySelector('#app');
-let state = null, editing = null, brakeOpen = false, editingPin = null, editingViewport = null, draftPin = null, closestDeadline = 0;
+let state = null, editing = null, brakeOpen = false, editingPlace = null, draftPin = null, closestDeadline = 0;
 let lobbySource = null, asScreen = false, localHost = false, showLogin = false, hostTab = 'show', hostFocus = '', stepPending = false, videoSeq = null, lastReport = 0, videoMemory = null, lastHadVideo = null;
 let brakePending = false, audioContext = null, audioReady = false, audioLoading = false, audioError = '', audioNextTime = 0, destinationSource = null, destinationRound = null, destinationPlaybackRound = null, destinationOffset = 0, destinationStartedAt = 0;
 const soundBuffers = {}, seenBrakes = new Set();
@@ -77,27 +77,22 @@ function bindGuest() {
   document.querySelector('#backToTeams')?.addEventListener('click', e => { e.preventDefault(); showLogin = false; render(); });
 }
 const qrSvg = text => { try { return typeof window !== 'undefined' && window.QR && text ? window.QR.svg(text) : ''; } catch { return ''; } };
-function screenKey(data) { return JSON.stringify([data.round,data.phase,data.type,data.points,data.overlay,data.scores,data.lobby,data.claimed,data.joinUrl,data.filmNumber,data.filmStage,data.answer,data.video,data.questions,data.answers,data.stage,data.image,data.clue,data.pins,data.correct,data.result,data.type==='destination'?data.brakes:undefined]); }
-function resultText(result) {
+function screenKey(data) { return JSON.stringify([data.round,data.phase,data.type,data.points,data.overlay,data.scores,data.lobby,data.claimed,data.joinUrl,data.filmNumber,data.filmStage,data.answer,data.video,data.questions,data.answers,data.stage,data.image,data.clue,data.pins,data.correct,data.result,data.place,data.wins,data.done,data.type==='destination'?data.brakes:undefined]); }
+// m = {place, placeCount, target, prize, wins, done, champions}: ställningen i Närmast vinner (först till m.target vunna platser).
+function resultText(result, m = {}) {
   if (!result) return '';
-  const winners = result.winners || [];
+  const winners = result.winners || [], wins = m.wins || {};
   const title = !winners.length ? 'Inget lag satte en nål' : winners.length > 1 ? 'Oavgjort: ' + winners.map(teamLabel).join(' och ') : 'Närmast: ' + teamLabel(winners[0]);
   const rows = activeTeamList().map(t => ({ t, d: result.distances?.[t.id] })).sort((a,b) => (a.d ?? Infinity) - (b.d ?? Infinity));
-  return `<div class="closest-result"><h2>${esc(title)}</h2><table class="closest-table"><thead><tr><th>#</th><th>Lag</th><th>Avstånd</th><th>Poäng</th></tr></thead><tbody>${rows.map(({t,d}) => `<tr${winners.includes(t.id) ? ' class="winner"' : ''}><td>${d == null ? '–' : rows.findIndex(r => r.d === d) + 1}</td><td>${esc(t.short)}</td><td>${d == null ? '–' : d + ' km'}</td><td>${winners.includes(t.id) ? '+' + result.points : '–'}</td></tr>`).join('')}</tbody></table></div>`;
+  const champs = m.champions || [], final = m.done ? `<div class="closest-final">${champs.length ? `🏆 ${esc(champs.map(teamLabel).join(' och '))} vinner Närmast vinner! <b>+${esc(m.prize)} p</b>` : 'Inget lag vann Närmast vinner.'}</div>` : '';
+  return `<div class="closest-result">${final}<h2>${esc(title)}</h2><table class="closest-table"><thead><tr><th>#</th><th>Lag</th><th>Avstånd</th><th>Vinster${m.target ? ' av ' + esc(m.target) : ''}</th></tr></thead><tbody>${rows.map(({t,d}) => `<tr${winners.includes(t.id) ? ' class="winner"' : ''}><td>${d == null ? '–' : rows.findIndex(r => r.d === d) + 1}</td><td>${esc(t.short)}</td><td>${d == null ? '–' : d + ' km'}</td><td>${esc(wins[t.id] || 0)}${winners.includes(t.id) ? ' (+1)' : ''}</td></tr>`).join('')}</tbody></table></div>`;
 }
+// Liten ställning (vinster per lag) som visas mellan platserna.
+const winsStrip = m => m?.target ? `<p class="closest-wins">${activeTeamList().map(t => `<span style="--team:${esc(t.color)}"><i></i>${esc(t.short)} <b>${esc(m.wins?.[t.id] || 0)}/${esc(m.target)}</b></span>`).join('')}</p>` : '';
+const hostMatch = (q, g) => ({ place: (g.closestPlace || 0) + 1, placeCount: q.places?.length || 0, target: q.target || 3, prize: q.points || 3, wins: g.closestWins || {}, done: !!g.closestDone, champions: g.closestChampions || [] });
 function mountMaps() {
   if (typeof window === 'undefined' || !window.GameMap) return;
   window.GameMap.cleanup?.();
-  const editorMap=document.querySelector('#correctMap');
-  if (editorMap) {
-    const scope='world';
-    const question=state.questions.find(item=>item.id===editing);
-    const saved=question?.viewport || null;
-    // Obs: sidan har även <meta name="viewport">, så fälten måste sökas inom formuläret.
-    const viewport=document.querySelector('#questionForm [name="viewport"]').value;
-    const draw=()=>window.GameMap.draw(editorMap,{scope,viewport:viewport?JSON.parse(viewport):saved,key:'editor',pins:editingPin?{mine:editingPin}:{},onViewport:area=>{editingViewport=area;document.querySelector('#questionForm [name="viewport"]').value=JSON.stringify(area);},onPick:point=>{editingPin=point;document.querySelector('#questionForm [name="answerLat"]').value=point.lat;document.querySelector('#questionForm [name="answerLon"]').value=point.lon;draw();}});
-    draw();
-  }
   const teamMap=document.querySelector('#teamMap');
   if (teamMap) {
     if (state.stage===1 && !draftPin && !state.pin) { const v=state.viewport; draftPin={lat:+((v.north+v.south)/2).toFixed(5),lon:+((v.east+v.west)/2).toFixed(5)}; pushPin(draftPin); }
@@ -111,6 +106,26 @@ function mountMaps() {
   const previewMap=document.querySelector('#previewMap'), sv=state.screenView;
   if (previewMap && sv) window.GameMap.draw(previewMap,{scope:sv.scope,viewport:sv.viewport,locked:true,key:'preview:'+sv.round,pins:sv.pins||{},correct:sv.correct});
 }
+// Kartan i redigeraren visar den valda platsen; fälten per plats ligger i formuläret (inte i <meta name="viewport">).
+function drawEditorMap() {
+  const el=document.querySelector('#correctMap'); if (!el || !window.GameMap) return;
+  const k=editingPlace, field=name=>document.querySelector(`#questionForm [name="${name}${k}"]`);
+  if (!field('viewport')) return;
+  const viewport=field('viewport').value, lat=field('answerLat').value, lon=field('answerLon').value;
+  const pin=lat!=='' && lon!=='' ? {lat:+lat,lon:+lon} : null;
+  const draw=pins=>window.GameMap.draw(el,{scope:'world',viewport:viewport?JSON.parse(viewport):null,key:'editor:'+k,pins,onViewport:area=>{field('viewport').value=JSON.stringify(area);},onPick:point=>{field('answerLat').value=point.lat;field('answerLon').value=point.lon;const st=document.querySelector(`#questionForm [data-place="${k}"] .cr-place-status`);if(st)st.textContent='📍 Rätt plats vald';draw({mine:point});}});
+  draw(pin?{mine:pin}:{});
+}
+// Växlar plats i redigeraren utan att rita om formuläret (valda bildfiler ligger kvar).
+function selectPlace(k) {
+  editingPlace=k;
+  const boxes=[...document.querySelectorAll('#questionForm [data-place]')];
+  boxes.forEach((box,i)=>{ box.classList.toggle('sel',box.dataset.place===String(k)); box.querySelector('legend').textContent=`Plats ${i+1}`; });
+  const label=document.querySelector('#mapLabel'); if (label) label.textContent=`Karta för plats ${boxes.findIndex(box=>box.dataset.place===String(k))+1}: zooma till utsnittet lagen ska se och klicka på rätt plats.`;
+  const old=document.querySelector('#correctMap'); if (old?.replaceWith) { const fresh=old.cloneNode(false); old.replaceWith(fresh); }
+  drawEditorMap();
+}
+const placeFields = (k, p = {}) => `<fieldset class="cr-fs cr-place" data-place="${k}"><legend>Plats</legend><label>Ledtråd som text (valfri om du väljer bild)<textarea name="clue${k}" maxlength="300">${esc(p.clue || '')}</textarea></label><label>Ledtråd som bild (valfri om du skriver text; PNG, JPG eller WebP)<input name="imageFile${k}" type="file" accept="image/png,image/jpeg,image/webp"></label>${p.image ? `<p class="hint">En bild är sparad. Välj en fil för att byta den. <label class="inline"><input type="checkbox" name="imageRemove${k}"> Ta bort bilden</label></p>` : ''}<input type="hidden" name="image${k}" value="${esc(p.image || '')}"><input type="hidden" name="viewport${k}" value="${esc(p.viewport ? JSON.stringify(p.viewport) : '')}"><input type="hidden" name="answerLat${k}" value="${esc(p.answerLat ?? '')}"><input type="hidden" name="answerLon${k}" value="${esc(p.answerLon ?? '')}"><p class="cr-place-actions"><span class="hint cr-place-status">${p.answerLat != null && p.answerLat !== '' ? '📍 Rätt plats vald' : '⚠ Ingen plats vald än'}</span><button type="button" class="ghost small" data-pick-place="${k}">Visa på kartan</button><button type="button" class="ghost small danger" data-remove-place="${k}">Ta bort platsen</button></p></fieldset>`;
 const typeName = t => ({destination:'Resmål',music:'Musikfråga',closest:'Närmast vinner'})[t] || t;
 const filmUsed = f => !!(f?.video || f?.questions?.some(x => x.question || x.answer));
 const CLUE_POINTS = [10,8,6,4,2];
@@ -135,8 +150,9 @@ function nextStep() {
     return ni !== undefined ? { label: `Starta Resefilm ${ni + 1}`, path: 'game/film', data: { index: ni } } : end();
   }
   if (q.type === 'music') return !g.musicShown ? { label: 'Visa musikfrågorna', path: 'game/music-question' } : !g.musicRevealed ? { label: 'Avslöja facit', path: 'game/music-reveal' } : end();
-  const stage = g.closestStage || 0;
-  return stage === 0 ? { label: 'Starta 10 sekunder', path: 'game/closest-stage', data: { stage: 1 } } : stage === 1 ? (performance.now() < closestDeadline ? { label: 'Lagen placerar sina nålar…', disabled: true } : { label: 'Visa nålar nu', path: 'game/closest-stage', data: { stage: 2 } }) : stage === 2 ? { label: 'Visa rätt plats och resultat', path: 'game/closest-stage', data: { stage: 3 } } : end();
+  const stage = g.closestStage || 0, m = hostMatch(q, g);
+  if (stage === 3 && !m.done) return { label: `Nästa plats · ${m.place + 1} av ${m.placeCount}`, path: 'game/closest-next' };
+  return stage === 0 ? { label: `Starta 10 sekunder · plats ${m.place} av ${m.placeCount}`, path: 'game/closest-stage', data: { stage: 1 } } : stage === 1 ? (performance.now() < closestDeadline ? { label: 'Lagen placerar sina nålar…', disabled: true } : { label: 'Visa nålar nu', path: 'game/closest-stage', data: { stage: 2 } }) : stage === 2 ? { label: 'Visa rätt plats och resultat', path: 'game/closest-stage', data: { stage: 3 } } : end();
 }
 async function runStep(step) { if (!step || step.disabled || stepPending) return; stepPending = true; try { await action(step.path, step.data || {}); } finally { stepPending = false; } }
 const liveTeams = () => state.lobby ? (state.teams || []).filter(t => (state.claimed || []).includes(t.id)) : activeTeamList();
@@ -150,7 +166,7 @@ const videoPct = () => { const s = state.tvStatus; return s?.duration ? Math.min
 const videoText = () => { const s = state.tvStatus; return !s?.video ? 'Väntar på videon…' : s.ended ? 'Videon är slut' : `${s.playing ? 'Spelar' : 'Pausad'} ${fmtTime(s.time)} / ${fmtTime(s.duration)}`; };
 function host() {
   const g = state.game, q = state.activeQuestion, qs = state.questions, live = q && g.phase !== 'waiting';
-  const where = state.lobby ? 'Lobby · lagen väljer lag' : live ? `Fråga ${qs.findIndex(x => x.id === q.id) + 1}/${qs.length} · ${typeName(q.type)} · <b>${esc(q.title)}</b>` : 'Mellan frågorna';
+  const where = state.lobby ? `Lobby · lagen väljer lag · <b>${esc(setName())}</b>` : live ? `Fråga ${qs.findIndex(x => x.id === q.id) + 1}/${qs.length} · ${typeName(q.type)} · <b>${esc(q.title)}</b>` : 'Mellan frågorna';
   const top = `<header class="cr-top"><div class="cr-brand"><span class="cr-logo">På resande fot</span><span class="cr-where">${where}</span></div><nav class="cr-tabs">${[['show','Show'],['prepare','Förbered']].map(([id,l]) => `<button class="${hostTab === id ? 'on' : ''}" data-tab="${id}">${l}</button>`).join('')}</nav><div class="cr-scores">${scoreChips()}</div><div id="tvPill">${tvPill()}</div></header>`;
   return `<div class="cr">${top}${hostTab === 'show' ? hostShow() : hostPrepare()}</div>`;
 }
@@ -162,7 +178,7 @@ function hostShow() {
 function stageLabel(q, g) {
   if (q.type === 'destination') return g.phase === 'active' ? `Ledtråd ${g.clueIndex + 1} av 5 · ${CLUE_POINTS[g.clueIndex]} p` : Number.isInteger(g.filmIndex) ? `Resefilm ${g.filmIndex + 1}` : 'Resmålet avslöjat';
   if (q.type === 'music') return !g.musicShown ? 'Videon spelas' : !g.musicRevealed ? 'Lagen svarar' : 'Facit visas';
-  return ['Ledtråd visas','Nedräkning','Nålar visas','Resultat'][g.closestStage || 0];
+  return g.closestDone ? 'Avgjord' : `Plats ${(g.closestPlace || 0) + 1} av ${q.places?.length || 0} · ` + ['Ledtråd visas','Nedräkning','Nålar visas','Resultat'][g.closestStage || 0];
 }
 function notes(q, g) {
   if (q.type === 'destination') {
@@ -176,14 +192,15 @@ function notes(q, g) {
     return `<div class="cr-facit${revealed ? ' shown' : ''}"><span>Facit${revealed ? ' · visas på TV' : ''}</span><strong>${esc(q.answer)}</strong></div><ol class="cr-clues">${clues}</ol>${films ? `<h2 class="cr-sub">Resefilm <small>0 rätt = 0 p · 1 rätt = 1 p · 2 rätt = 3 p</small></h2>${films}` : ''}`;
   }
   if (q.type === 'music') return `<p class="cr-muted">${q.video ? '🎬 Videon visas på storbilden tills du visar frågorna.' : '⚠ Ingen video uppladdad.'}</p><ol class="cr-qs big">${q.musicQuestions.map(x => `<li>${esc(x.question)}<small>Facit: <b>${esc(x.answer)}</b></small></li>`).join('')}</ol>`;
-  const stage = g?.closestStage || 0;
-  return `${q.clue ? `<p class="cr-big">${esc(q.clue)}</p>` : ''}${q.image ? '<p class="cr-muted">🖼 Ledtrådsbilden visas på storbilden.</p>' : ''}<div class="cr-facit"><span>Rätt plats · ${q.points || 10} p till närmaste lag</span><strong>${(+q.answerLat).toFixed(3)}, ${(+q.answerLon).toFixed(3)}</strong></div>${g && stage === 1 ? '<div class="cr-count"><strong id="countdown"></strong><span>sekunder kvar</span></div>' : ''}${g && stage === 3 ? resultText(state.closestResult) + '<p class="cr-muted">Poängen har delats ut automatiskt.</p>' : ''}`;
+  const stage = g?.closestStage || 0, pi = g?.closestPlace || 0, m = g ? hostMatch(q, g) : null, places = q.places || [];
+  const list = places.map((p,i) => `<li class="${g && (i < pi || (i === pi && stage === 3)) ? 'done' : g && i === pi ? 'now' : ''}"><span class="cr-pts">${i + 1}</span><p>${esc(p.clue || '')}${p.image ? ' 🖼' : ''}<small class="cr-coords">Rätt plats: ${(+p.answerLat).toFixed(3)}, ${(+p.answerLon).toFixed(3)}</small></p></li>`).join('');
+  return `<div class="cr-facit"><span>Först till ${esc(q.target || 3)} vunna platser</span><strong>${esc(q.points || 3)} p till vinnaren</strong></div>${m ? winsStrip(m) : ''}${g && stage === 1 ? '<div class="cr-count"><strong id="countdown"></strong><span>sekunder kvar</span></div>' : ''}${g && stage === 3 ? resultText(state.closestResult, m) + (m.done ? '<p class="cr-muted">Poängen har delats ut automatiskt.</p>' : '') : ''}<ol class="cr-clues">${list}</ol>`;
 }
 function manus() {
   const g = state.game, q = state.activeQuestion;
   if (state.lobby) {
     const claimed = state.claimed || [];
-    return `<div class="cr-kicker">Lobby · ${claimed.length} av ${state.teams.length} lag ombord</div><h1>Välkomna ombord!</h1><p class="cr-muted">Storbilden visar en QR-kod. Telefonerna skannar den (eller öppnar <b>${esc(state.joinUrl)}</b>) och trycker på sitt lag. Tryck <b>Kör</b> när alla är ombord.</p><div class="cr-lobby">${state.teams.map(t => { const on = claimed.includes(t.id); return `<div class="cr-lobby-team${on ? ' on' : ''}" style="--team:${esc(t.color)}"><b>${esc(t.short)}</b><span>${on ? '✓ Ombord' : 'Ledigt'}</span>${on ? `<button class="ghost small" data-release="${esc(t.id)}" title="Släpp laget så att en annan telefon kan ta det">Frigör</button>` : ''}</div>`; }).join('')}</div><p class="cr-lobby-actions"><button class="ghost small" id="resetGame">Nytt spel: nollställ poäng och spelade frågor</button></p>`;
+    return `<div class="cr-kicker">Lobby · ${claimed.length} av ${state.teams.length} lag ombord</div><h1>Välkomna ombord!</h1><p class="cr-muted">Storbilden visar en QR-kod. Telefonerna skannar den (eller öppnar <b>${esc(state.joinUrl)}</b>) och trycker på sitt lag. Tryck <b>Kör</b> när alla är ombord.</p><div class="cr-lobby">${state.teams.map(t => { const on = claimed.includes(t.id); return `<div class="cr-lobby-team${on ? ' on' : ''}" style="--team:${esc(t.color)}"><b>${esc(t.short)}</b><span>${on ? '✓ Ombord' : 'Ledigt'}</span>${on ? `<button class="ghost small" data-release="${esc(t.id)}" title="Släpp laget så att en annan telefon kan ta det">Frigör</button>` : ''}</div>`; }).join('')}</div>${setPicker()}<p class="cr-lobby-actions"><button class="ghost small" id="resetGame">Nytt spel: nollställ poäng och spelade frågor</button></p>`;
   }
   if (!q || g.phase === 'waiting') {
     const n = nextQuestion();
@@ -212,9 +229,9 @@ function teamBody(id) {
     const ans = g.musicAnswers?.[id];
     return ans ? `<div class="cr-ans pre">${esc(ans)}</div><div class="cr-awards">${awardBtns('music', id, MUSIC_CHIPS)}</div>` : '<div class="cr-wait">Skriver svar…</div>';
   }
-  const stage = g.closestStage || 0, r = state.closestResult;
-  if (stage === 3 && r) return r.distances?.[id] == null ? '<div class="cr-wait">Ingen nål</div>' : `<div class="cr-ans"><q>${r.distances[id]} km</q>${r.winners?.includes(id) ? `<small class="win">Närmast · +${r.points}</small>` : ''}</div>`;
-  return `<div class="cr-wait">${g.closestAnswers?.[id] ? '📍 Nål satt' : stage === 0 ? 'Väntar på kartan' : 'Ingen nål ännu'}</div>`;
+  const stage = g.closestStage || 0, r = state.closestResult, w = `<small>${g.closestWins?.[id] || 0} av ${q.target || 3} vinster${(g.closestChampions || []).includes(id) && g.closestDone ? ` · 🏆 +${q.points || 3} p` : ''}</small>`;
+  if (stage === 3 && r) return r.distances?.[id] == null ? `<div class="cr-wait">Ingen nål</div>${w}` : `<div class="cr-ans"><q>${r.distances[id]} km</q>${r.winners?.includes(id) ? '<small class="win">Närmast · +1 vinst</small>' : ''}${w}</div>`;
+  return `<div class="cr-wait">${g.closestAnswers?.[id] ? '📍 Nål satt' : stage === 0 ? 'Väntar på kartan' : 'Ingen nål ännu'}</div>${w}`;
 }
 function teamCards() {
   const g = state.game, q = state.activeQuestion, live = q && g.phase !== 'waiting';
@@ -240,6 +257,12 @@ function teamPickerForm() {
   if (state.lobby) return '<p class="hint">Lagen väljer själva lag i lobbyn via QR-koden på storbilden.</p>';
   return state.phase === 'waiting' ? `<form id="teamsForm"><div class="team-picker">${(state.teams || []).map(t => `<label class="team-pick" style="--team:${esc(t.color)}"><input type="checkbox" name="team" value="${esc(t.id)}" ${state.activeTeams.includes(t.id) ? 'checked' : ''}> ${esc(t.short)}</label>`).join('')}</div><button class="ghost">Spara lag</button><p class="hint">Välj 2–5 lag. Kan ändras mellan frågorna.</p></form>` : `<p class="hint">Aktiva lag: ${activeTeamList().map(t => esc(t.short)).join(', ')}. Lagen kan ändras mellan frågorna.</p>`;
 }
+// Frågeset: spelledaren väljer vilket set som körs; byte sker mellan frågorna.
+function setPicker() {
+  const sets = state.sets || [], locked = state.game.phase !== 'waiting';
+  return `<div class="cr-sets"><label>Frågeset <select id="setPick" ${locked ? 'disabled title="Avsluta frågan för att byta set"' : ''}>${sets.map(x => `<option value="${esc(x.id)}" ${x.id === state.setId ? 'selected' : ''}>${esc(x.name)} (${x.count} frågor)</option>`).join('')}</select></label><button class="ghost small" id="setNew" ${locked ? 'disabled' : ''}>Nytt set</button><button class="ghost small" id="setCopy" ${locked ? 'disabled' : ''}>Kopiera</button><button class="ghost small" id="setRename">Byt namn</button><button class="ghost small danger" id="setDelete" ${sets.length < 2 ? 'disabled' : ''}>Ta bort</button></div>`;
+}
+const setName = () => (state.sets || []).find(x => x.id === state.setId)?.name || '';
 function hostPrepare() {
   const played = state.played || [], cur = state.game.phase !== 'waiting' ? state.game.questionId : null;
   const rows = state.questions.map((q,i) => {
@@ -251,13 +274,13 @@ function hostPrepare() {
   const claimedNow = state.claimed || [];
   const phones = state.lobby ? '' : `<h2>Telefoner</h2>${activeTeamList().map(t => `<div class="cr-phone" style="--team:${esc(t.color)}"><span class="cr-score-name"><i></i>${esc(t.short)}</span>${claimedNow.includes(t.id) ? `<span class="cr-tag live">ansluten</span><button class="ghost small" data-release="${esc(t.id)}">Frigör</button>` : '<span class="cr-tag">ingen telefon – kan väljas via QR-koden</span>'}</div>`).join('')}`;
   const side = editing !== null ? editorPanel() : `<section class="cr-panel"><h2>Lag i spel</h2>${teamPickerForm()}${state.lobby ? '' : '<p><button class="ghost small" id="openLobby">Tillbaka till lobbyn (lagval och QR-kod)</button></p>'}${phones}<h2>Rätta poäng manuellt</h2>${scores}</section>`;
-  return `<main class="cr-prep"><section class="cr-panel"><div class="cr-panel-head"><h2>Frågor i spelordning</h2><button class="ghost small" id="resetPlayed">Nollställ spelade</button></div>${rows || '<p>Inga frågor ännu.</p>'}<div class="actions cr-add"><button id="addDest">+ Resmål</button><button id="addMusic" class="ghost">+ Musikfråga</button><button id="addClosest" class="ghost">+ Närmast vinner</button></div></section>${side}</main>`;
+  return `<main class="cr-prep"><section class="cr-panel">${setPicker()}<div class="cr-panel-head"><h2>Frågor i spelordning</h2><button class="ghost small" id="resetPlayed">Nollställ spelade</button></div>${rows || '<p>Inga frågor ännu.</p>'}<div class="actions cr-add"><button id="addDest">+ Resmål</button><button id="addMusic" class="ghost">+ Musikfråga</button><button id="addClosest" class="ghost">+ Närmast vinner</button></div></section>${side}</main>`;
 }
 function editorPanel() {
   const e = editing && state.questions.find(q => q.id === editing);
   const editorType = e?.type || editing?.type;
   const editorFields = editorType === 'closest'
-    ? `<label>Ledtråd som text (valfri om du väljer bild)<textarea name="clue" maxlength="300">${esc(e?.clue||'')}</textarea></label><label>Ledtråd som bild (valfri om du skriver text; PNG, JPG eller WebP)<input name="imageFile" type="file" accept="image/png,image/jpeg,image/webp"></label><label>Poäng till närmaste lag<input name="points" type="number" min="1" max="100" value="${esc(e?.points||10)}" required></label>${e?.image?'<p class="hint">En bild är redan sparad. Välj en fil om du vill byta den.</p>':''}<p class="hint">Zooma och flytta kartan till det utsnitt lagen ska se. Klicka sedan på rätt plats. Det synliga utsnittet sparas när du sparar frågan.</p><div id="correctMap" class="map-wrap"></div><input type="hidden" name="viewport" value="${esc(editingViewport?JSON.stringify(editingViewport):e?.viewport?JSON.stringify(e.viewport):'')}"><input type="hidden" name="answerLat" value="${esc(editingPin?.lat ?? e?.answerLat ?? '')}"><input type="hidden" name="answerLon" value="${esc(editingPin?.lon ?? e?.answerLon ?? '')}">`
+    ? `<div class="cr-grid2"><label>Vunna platser för att vinna<input name="target" type="number" min="1" max="10" value="${esc(e?.target||3)}" required></label><label>Poäng till vinnaren<input name="points" type="number" min="1" max="100" value="${esc(e?.points||3)}" required></label></div><p class="hint">Platserna spelas i ordning. Närmaste lag vinner platsen; först till målet får poängen. Tar platserna slut vinner laget med flest vunna platser. Lägg till fler platser än målet, t.ex. 6–8 för först till 3.</p>${(e?.places?.length ? e.places : [{}]).map((p,i) => placeFields(i, p)).join('')}<p><button type="button" class="ghost" id="addPlace">+ Lägg till plats</button></p><p class="hint" id="mapLabel"></p><div id="correctMap" class="map-wrap"></div>`
     : editorType === 'music'
     ? `<label>MP4-video<input name="videoFile" type="file" accept="video/mp4,.mp4" ${e?.video ? '' : 'required'}></label>${e?.video ? '<p class="hint">En video är redan sparad. Välj en fil om du vill byta den.</p>' : ''}${[0,1].map(i => `<label>Musikfråga ${i + 1}<textarea name="musicQuestion${i}" required>${esc(e?.musicQuestions?.[i]?.question || '')}</textarea></label><label>Facit till musikfråga ${i + 1}<input name="musicAnswer${i}" required value="${esc(e?.musicQuestions?.[i]?.answer || '')}"></label>`).join('')}`
     : `<label>Facit (resmålet)<input name="answer" required value="${esc(e?.answer || '')}"></label>` + CLUE_POINTS.map((p,i) => `<label>${p} poäng<textarea name="clue${i}" required>${esc(e?.clues?.[i] || '')}</textarea></label>`).join('')
@@ -267,8 +290,8 @@ function editorPanel() {
 function team() {
   if (state.lobby) return `<section class="hero card"><div class="eyebrow">Ni är ombord</div><h1>${esc(teamMeta(state.role)?.short || state.label)}</h1><p>Titta på storbilden. Resan börjar när spelledaren trycker kör.</p><button id="leaveTeam" class="secondary">Byt lag</button></section>`;
   if (state.phase === 'waiting') return `<section class="hero card"><div class="eyebrow">Redo för avfärd</div><h1>Väntar på nästa fråga</h1><p>Spelledaren startar snart.</p></section>`;
-  if (state.type === 'closest' && state.stage === 1) return `<section class="closest-full"><div id="teamMap" class="map-wrap"></div><div class="closest-hud"><div id="countdown" class="countdown"></div><p>Flytta och zooma kartan så att nålen hamnar på rätt plats</p></div></section>`;
-  if (state.type === 'closest') return `<section class="hero card closest-team"><div class="eyebrow">Närmast vinner</div><h1>${state.stage===0?'Gör er redo':state.stage===1?'Placera er nål!':state.stage===2?'Tiden är ute':'Resultat'}</h1>${state.stage===1?'<div id="countdown" class="countdown"></div>':''}<div id="teamMap" class="map-wrap"></div>${state.stage===0?'<p>Titta på storbilden. Ledtråden visas där. Kartan öppnas när spelledaren startar tiden.</p>':state.stage===1?'<p>Dra nålen med fingret dit ni tror att platsen ligger. Ni kan flytta den tills tiden går ut.</p>':state.stage===2?'<p>'+(state.pin?'Er nål är låst.':'Ni hann inte sätta någon nål.')+'</p>':''}${state.correct ? resultText(state.result) : ''}</section>`;
+  if (state.type === 'closest' && state.stage === 1) return `<section class="closest-full"><div id="teamMap" class="map-wrap"></div><div class="closest-hud"><div id="countdown" class="countdown"></div><p>${state.placeCount ? `Plats ${esc(state.place)} av ${esc(state.placeCount)}. ` : ''}Flytta och zooma kartan så att nålen hamnar på rätt plats</p></div></section>`;
+  if (state.type === 'closest') return `<section class="hero card closest-team"><div class="eyebrow">Närmast vinner${state.placeCount ? ` · plats ${esc(state.place)} av ${esc(state.placeCount)}` : ''}</div><h1>${state.stage===0?'Gör er redo':state.stage===1?'Placera er nål!':state.stage===2?'Tiden är ute':'Resultat'}</h1>${state.stage===1?'<div id="countdown" class="countdown"></div>':''}<div id="teamMap" class="map-wrap"></div>${state.stage===0?'<p>Titta på storbilden. Ledtråden visas där. Kartan öppnas när spelledaren startar tiden.</p>':state.stage===1?'<p>Dra nålen med fingret dit ni tror att platsen ligger. Ni kan flytta den tills tiden går ut.</p>':state.stage===2?'<p>'+(state.pin?'Er nål är låst.':'Ni hann inte sätta någon nål.')+'</p>':''}${state.correct ? resultText(state.result, state) : state.stage === 0 ? winsStrip(state) : ''}</section>`;
   if (state.type === 'music') return `<section class="hero card"><h1>Lyssna och njut</h1></section>`;
   if (state.type === 'music-question') return `<section class="hero card"><div class="eyebrow">Musikfrågor</div><ol class="music-questions">${state.questions.map(question => `<li>${esc(question)}</li>`).join('')}</ol>${state.locked ? `<div class="locked"><strong>Ert svar är låst</strong><p class="preserve-lines">${esc(state.locked)}</p></div>` : state.answers ? '' : `<form id="musicAnswerForm"><label>Skriv svaren på alla frågor i samma ruta<textarea name="answer" required maxlength="2000" rows="6"></textarea></label><button>Lås svar</button></form>`}${state.answers ? `<div class="reveal"><strong>Rätta svar</strong><ol>${state.answers.map(answer => `<li>${esc(answer)}</li>`).join('')}</ol></div>` : ''}</section>`;
   if (state.type === 'film') {
@@ -296,7 +319,7 @@ function screen(s = state, preview = false) {
   const brakes=s.type==='destination' && s.phase==='active' ? s.brakes||[] : [];
   const brakeNotice=brakes.length ? `<div class="screen-brake-notices" aria-live="polite">${brakes.map((event,index)=>{const meta=teamMeta(event.team);return `<div class="screen-brake-notice ${(meta?.theme||'dressin')+'-brake'} ${index===brakes.length-1?'latest-brake':''}"><img src="/assets/nodbroms.png" alt=""><div><strong>${esc(meta?.short||event.team)} har dragit i nödbromsen!</strong></div></div>`;}).join('')}</div>` : '';
   if (s.phase === 'waiting' || !s.type) return soundControl + `<section class="screen-card"><div class="eyebrow">På resande fot</div><h1>Väntar på nästa fråga</h1></section>`;
-  if (s.type === 'closest') { const clue = `${s.image?(preview?'<div class="cr-vph">🖼 Bild</div>':`<img class="closest-image" src="${esc(s.image)}" alt="Ledtråd">`):''}${s.clue?`<p class="closest-clue">${esc(s.clue)}</p>`:''}`; return soundControl + (s.stage===0 ? `<section class="screen-card closest-screen"><div class="eyebrow">Närmast vinner</div><div class="closest-clue-box">${clue}</div></section>` : `<section class="screen-card closest-screen"><div class="eyebrow">Närmast vinner</div>${s.stage===1?countdown:''}<div class="closest-split"><div class="closest-clue-box">${clue}</div><div id="${preview?'previewMap':'screenMap'}" class="map-wrap"></div></div>${s.stage>=2?`<p class="map-legend">${activeTeamList().map(t=>`<span style="color:${esc(t.color)}">● ${esc(t.short)}</span>`).join(' ')}${s.stage>=3?' <span class="correct-dot">● Rätt plats</span>':''}</p>`:''}${s.stage===3?resultText(s.result):''}</section>`); }
+  if (s.type === 'closest') { const clue = `${s.image?(preview?'<div class="cr-vph">🖼 Bild</div>':`<img class="closest-image" src="${esc(s.image)}" alt="Ledtråd">`):''}${s.clue?`<p class="closest-clue">${esc(s.clue)}</p>`:''}`; const eyebrow = `<div class="eyebrow">Närmast vinner${s.placeCount ? ` · plats ${esc(s.place)} av ${esc(s.placeCount)} · först till ${esc(s.target)}` : ''}</div>`; return soundControl + (s.stage===0 ? `<section class="screen-card closest-screen">${eyebrow}<div class="closest-clue-box">${clue}</div>${winsStrip(s)}</section>` : `<section class="screen-card closest-screen">${eyebrow}${s.stage===1?countdown:''}<div class="closest-split"><div class="closest-clue-box">${clue}</div><div id="${preview?'previewMap':'screenMap'}" class="map-wrap"></div></div>${s.stage>=2?`<p class="map-legend">${activeTeamList().map(t=>`<span style="color:${esc(t.color)}">● ${esc(t.short)}</span>`).join(' ')}${s.stage>=3?' <span class="correct-dot">● Rätt plats</span>':''}</p>`:''}${s.stage===3?resultText(s.result, s):''}</section>`); }
   if (s.type === 'music') return soundControl + (s.questions ? questionCard('Musikfrågor', 'Vad hörde ni?') : videoCard('Musikvideo'));
   if (s.filmNumber) return soundControl + (s.filmStage === 'video' ? videoCard('Resefilm ' + s.filmNumber) : questionCard('Resefilm ' + s.filmNumber, 'Frågor om filmen'));
   if(s.phase==='revealed')return `<section class="screen-card answer-screen"><div class="reveal">Rätt svar: <strong>${esc(s.answer)}</strong></div></section>`;
@@ -385,17 +408,25 @@ function bindHost() {
   all('[data-release]', b => { if (confirm(`Frigöra ${teamLabel(b.dataset.release)}? Telefonen loggas ut och laget kan väljas igen.`)) action('lobby/release', { team: b.dataset.release }); });
   on('#resetGame', () => { if (confirm('Starta ett nytt spel? Alla poäng nollställs och alla frågor markeras som ospelade.')) action('lobby/reset'); });
   on('#openLobby', () => { if (state.game.phase !== 'waiting' && !confirm('En fråga pågår. Avbryta den och gå till lobbyn?')) return; hostTab = 'show'; action('lobby/open'); });
+  document.querySelector('#setPick')?.addEventListener('change', e => { editing = null; action('sets/select', { id: e.target.value }); });
+  on('#setNew', () => { const name = prompt('Namn på det nya frågesetet:'); if (name?.trim()) { editing = null; action('sets/create', { name }); } });
+  on('#setCopy', () => { const name = prompt('Namn på kopian:', setName() + ' (kopia)'); if (name?.trim()) { editing = null; action('sets/create', { name, copyFrom: state.setId }); } });
+  on('#setRename', () => { const name = prompt('Nytt namn på frågesetet:', setName()); if (name?.trim()) action('sets/rename', { id: state.setId, name }); });
+  on('#setDelete', () => { const others = (state.sets || []).filter(x => x.id !== state.setId); if (!others.length) return; const list = others.map((x,i) => `${i + 1}. ${x.name}`).join('\n'); const pick = prompt(`Vilket set ska tas bort? Ange numret (det valda setet kan inte tas bort):\n${list}`); const target = others[Number(pick) - 1]; if (target && confirm(`Ta bort frågesetet "${target.name}" med ${target.count} frågor? Det går inte att ångra.`)) action('sets/delete', { id: target.id }); });
+  on('#addPlace', () => { const boxes = document.querySelectorAll('#questionForm [data-place]'), last = boxes[boxes.length - 1], k = Math.max(-1, ...[...boxes].map(b => Number(b.dataset.place))) + 1; const vp = last?.querySelector(`[name="viewport${last.dataset.place}"]`)?.value; document.querySelector('#addPlace').parentElement.insertAdjacentHTML('beforebegin', placeFields(k, { viewport: vp ? JSON.parse(vp) : null })); bindPlaces(); selectPlace(k); });
+  bindPlaces();
+  if (document.querySelector('#correctMap')) selectPlace(editingPlace ?? Number(document.querySelector('#questionForm [data-place]')?.dataset.place || 0));
   on('#resetPlayed', () => { if (confirm('Markera alla frågor som ospelade?')) action('played/reset'); });
   document.querySelector('#teamsForm')?.addEventListener('submit', async event => { event.preventDefault(); await action('teams', { teams: [...new FormData(event.target).getAll('team')] }); });
   document.querySelectorAll('[data-score]').forEach(form=>form.addEventListener('submit',async event=>{event.preventDefault();const amount=Number(new FormData(form).get('delta'));const sign=Number(event.submitter?.value||1);await action('score/add',{team:form.dataset.score,delta:amount*sign});}));
   all('[data-start]', b => { if (state.game.phase !== 'waiting' && !confirm('En fråga pågår. Starta den här i stället?')) return; hostTab = 'show'; editing = null; action('game/start', {id:b.dataset.start}); });
   all('[data-move]', b => action('question/move', {id:b.dataset.move,direction:Number(b.dataset.direction)}));
-  all('[data-edit]', b => { const q=state.questions.find(item=>item.id===b.dataset.edit); editingPin=q?.type==='closest'?{lat:q.answerLat,lon:q.answerLon}:null; editingViewport=q?.viewport||null; openEditor(b.dataset.edit); });
+  all('[data-edit]', b => { editingPlace = null; openEditor(b.dataset.edit); });
   all('[data-delete]', b => { if (confirm('Ta bort frågan?')) action('question/delete', {id:b.dataset.delete}); });
   on('#addDest', () => openEditor({type:'destination'}));
   on('#addMusic', () => openEditor({type:'music'}));
-  on('#addClosest', () => { editingPin=null; editingViewport=null; openEditor({type:'closest'}); });
-  on('#cancel', () => { editing = null; editingViewport=null; render(); });
+  on('#addClosest', () => { editingPlace = null; openEditor({type:'closest'}); });
+  on('#cancel', () => { editing = null; editingPlace = null; render(); });
   document.querySelector('#questionForm')?.addEventListener('submit', async e => {
     e.preventDefault(); const f = new FormData(e.target), saveButton = document.querySelector('#saveQuestion');
     const q = {id:f.get('id') || undefined,type:f.get('type'),title:f.get('title'),answer:f.get('answer')};
@@ -407,16 +438,19 @@ function bindHost() {
         q.video = file?.size ? await uploadVideo(file) : saved?.video;
         q.musicQuestions = [0,1].map(i => ({question:f.get('musicQuestion'+i),answer:f.get('musicAnswer'+i)}));
       } else if (q.type === 'closest') {
-        const file=f.get('imageFile');
-        q.image=saved?.image;
-        if (file?.size) {
-          const mime={'image/png':'png','image/jpeg':'jpg','image/webp':'webp'}[file.type];
-          if (!mime) throw Error('Välj en PNG-, JPG- eller WebP-bild.');
-          const response=await fetch('/api/image/upload',{method:'POST',headers:{'Content-Type':file.type},body:file});
-          const result=await response.json(); if (!response.ok) throw Error(result.error||'Bilden kunde inte laddas upp.');
-          q.image=result.image;
+        q.points=f.get('points'); q.target=f.get('target'); q.places=[];
+        for (const box of document.querySelectorAll('#questionForm [data-place]')) {
+          const k=box.dataset.place, file=f.get('imageFile'+k);
+          let image=f.get('imageRemove'+k) ? '' : f.get('image'+k) || '';
+          if (file?.size) {
+            const mime={'image/png':'png','image/jpeg':'jpg','image/webp':'webp'}[file.type];
+            if (!mime) throw Error('Välj en PNG-, JPG- eller WebP-bild.');
+            const response=await fetch('/api/image/upload',{method:'POST',headers:{'Content-Type':file.type},body:file});
+            const result=await response.json(); if (!response.ok) throw Error(result.error||'Bilden kunde inte laddas upp.');
+            image=result.image;
+          }
+          q.places.push({clue:f.get('clue'+k),image,answerLat:f.get('answerLat'+k),answerLon:f.get('answerLon'+k),viewport:f.get('viewport'+k)?JSON.parse(f.get('viewport'+k)):null});
         }
-        q.clue=f.get('clue'); q.points=f.get('points'); q.answerLat=f.get('answerLat'); q.answerLon=f.get('answerLon'); q.viewport=f.get('viewport')?JSON.parse(f.get('viewport')):null;
       } else {
         q.clues = [0,1,2,3,4].map(i => f.get('clue'+i));
         q.films = [];
@@ -427,13 +461,21 @@ function bindHost() {
           q.films.push({video, questions:[0,1].map(j => ({question:f.get(`film${i}q${j}`),answer:f.get(`film${i}a${j}`)}))});
         }
       }
-      state = await api('question/save',q); editing = null;editingViewport=null; render();
+      state = await api('question/save',q); editing = null; editingPlace = null; render();
     } catch (error) { alert(error.message); if (saveButton) { saveButton.disabled = false; saveButton.textContent = 'Spara fråga'; } }
   });
   scalePreview();
   // När steget byts rullar manuset till aktuell ledtråd eller resefilm.
   const g = state.game, focus = JSON.stringify([hostTab, g.questionId, g.phase, g.clueIndex, g.filmIndex, g.filmStage]);
   if (focus !== hostFocus) { hostFocus = focus; document.querySelector('.cr-manus .now')?.scrollIntoView?.({block:'center', behavior:'smooth'}); }
+}
+function bindPlaces() {
+  document.querySelectorAll('[data-pick-place]').forEach(b => { b.onclick = () => selectPlace(Number(b.dataset.pickPlace)); });
+  document.querySelectorAll('[data-remove-place]').forEach(b => { b.onclick = () => {
+    const boxes = [...document.querySelectorAll('#questionForm [data-place]')]; if (boxes.length < 2) { alert('En Närmast vinner-fråga behöver minst en plats.'); return; }
+    const box = b.closest('[data-place]'), wasSel = Number(box.dataset.place) === editingPlace; box.remove();
+    const first = Number(document.querySelector('#questionForm [data-place]').dataset.place); selectPlace(wasSel ? first : editingPlace);
+  }; });
 }
 // Kortkommandon för spelledaren i Show-läget; ignoreras när man skriver i ett fält.
 document.addEventListener('keydown', e => {
