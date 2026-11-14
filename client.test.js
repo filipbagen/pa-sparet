@@ -84,9 +84,16 @@ test('storbilden spelar rätt bromsljud en gång per händelse', async () => {
   assert.doesNotMatch(app.innerHTML,/En ledtråd|poäng|Resa/);
   eventSource.onmessage({data:JSON.stringify({...initial,round:2,brakes:[]})});
   assert.equal(played.filter(item=>item.file==='/assets/resmal-loop.mp3').length,3);
-  eventSource.onmessage({data:JSON.stringify({...initial,phase:'revealed',followupNumber:1,question:'En följdfråga'})});
-  assert.match(app.innerHTML,/En följdfråga/);
-  assert.doesNotMatch(app.innerHTML,/Göteborg|En ledtråd/);
+  eventSource.onmessage({data:JSON.stringify({...initial,phase:'revealed',filmNumber:1,filmStage:'questions',questions:['Vad heter älven?','Vad heter nöjesfältet?']})});
+  assert.match(app.innerHTML,/Resefilm 1/);
+  assert.match(app.innerHTML,/Vad heter nöjesfältet\?/);
+  assert.doesNotMatch(app.innerHTML,/Göteborg|En ledtråd|Rätt svar/);
+  eventSource.onmessage({data:JSON.stringify({...initial,overlay:'scoreboard',type:undefined,scores:{dressin:4,forsta:9}})});
+  assert.match(app.innerHTML,/Ställning/);
+  assert.ok(app.innerHTML.indexOf('Första klass') < app.innerHTML.indexOf('Dressinen'));
+  eventSource.onmessage({data:JSON.stringify({...initial,overlay:'blank',type:undefined})});
+  assert.match(app.innerHTML,/tv-blank/);
+  assert.doesNotMatch(app.innerHTML,/Ställning|Resefilm/);
 });
 
 test('lokal karta använder geografidata utan externa kartanrop', () => {
@@ -99,18 +106,19 @@ test('lokal karta använder geografidata utan externa kartanrop', () => {
   assert.equal(context.window.GameMap.bounds.world.west,-180);
 });
 
-test('lagets följdfråga har svarsfält och bara knappen Avsluta utanför frågan', async () => {
-  const app = {innerHTML:''}, logout = {}, followupForm = {addEventListener(){}};
+test('lagets resefilm har två svarsfält och bara knappen Avsluta utanför frågan', async () => {
+  const app = {innerHTML:''}, logout = {}, filmForm = {addEventListener(){}};
   const context = {
-    document: {body:{},querySelector: selector => ({'#app':app,'#logout':logout,'#followupForm':followupForm}[selector] || null),addEventListener(){}},
+    document: {body:{},querySelector: selector => ({'#app':app,'#logout':logout,'#filmForm':filmForm}[selector] || null),addEventListener(){}},
     location:{pathname:'/view/dressin'},
-    fetch: async url => ({ok:true,json:async()=>url === '/api/me' ? {role:'dressin'} : {role:'dressin',label:'Lag Dressin',theme:'dressin',phase:'revealed',type:'followup',followupIndex:0,round:1,score:7,question:'Vad heter älven?',locked:null,teams,activeTeams}}),
+    fetch: async url => ({ok:true,json:async()=>url === '/api/me' ? {role:'dressin'} : {role:'dressin',label:'Lag Dressin',theme:'dressin',phase:'revealed',type:'film',filmIndex:0,filmStage:'questions',round:1,score:7,questions:['Vad heter älven?','Vilket år?'],locked:null,teams,activeTeams}}),
     EventSource: class {},
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'public/app.js'),'utf8'),Object.assign(context,browserTimers));
   await new Promise(resolve=>setImmediate(resolve));
   assert.match(app.innerHTML,/Vad heter älven\?/);
-  assert.match(app.innerHTML,/id="followupForm"/);
+  assert.match(app.innerHTML,/id="filmForm"/);
+  assert.match(app.innerHTML,/name="answer0"[\s\S]*name="answer1"/);
   assert.match(app.innerHTML,/Lagets poäng <strong>7<\/strong>/);
   assert.match(app.innerHTML,/>Avsluta<\/button>/);
   assert.doesNotMatch(app.innerHTML,/<header|Logga ut|Huvudmeny/);
@@ -177,4 +185,47 @@ test('storbilden visar bild, karta, lagnålar och facit i rätt ordning', async 
   assert.match(app.innerHTML,/Närmast: Dressinen/);
   assert.match(app.innerHTML,/<td>200 km<\/td>/);
   assert.match(app.innerHTML,/\+10/);
+});
+
+test('spelledarens Show-vy visar manus, facit, lagens svar, storbildsförhandsvisning och nästa steg', async () => {
+  const app = {innerHTML:''}, logout = {}, posts = [], listeners = {};
+  let events;
+  const q = {id:'q1',type:'destination',title:'Västervik',answer:'Västervik',clues:['L1','L2','L3','L4','L5'],films:[{video:'v.mp4',questions:[{question:'Vad heter ön?',answer:'Stora Grindö'},{question:'Vilket år?',answer:'1433'}]},{video:'',questions:[{question:'',answer:''},{question:'',answer:''}]},{video:'',questions:[{question:'',answer:''},{question:'',answer:''}]}]};
+  const game = {phase:'active',questionId:'q1',clueIndex:1,round:4,answers:{forsta:{answer:'Kalmar',points:8}},brakes:{dressin:{id:'b',team:'dressin'}},awards:{}};
+  const initial = {role:'host',label:'Spelledare',phase:'active',round:4,teams,activeTeams,game,scores:{dressin:3,forsta:12},questions:[q,{id:'q2',type:'music',title:'Timbuktu',musicQuestions:[]}],played:['q1'],activeQuestion:q,tv:{mode:'game'},tvStatus:{audioReady:true},screenOnline:1,screenView:{role:'screen',phase:'active',type:'destination',points:8,brakes:[{id:'b',team:'dressin'}],teams,activeTeams}};
+  const context = {
+    document:{body:{},querySelector:selector=>({'#app':app,'#logout':logout}[selector]||null),querySelectorAll:()=>[],addEventListener(name,fn){listeners[name]=fn;}},
+    location:{pathname:'/view/host'},
+    fetch:async (url,opts)=>{ if (opts?.method==='POST') posts.push([url,JSON.parse(opts.body)]); return {ok:true,json:async()=>url==='/api/me'?{role:'host'}:initial}; },
+    EventSource:class{constructor(){events=this;}},
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'public/app.js'),'utf8'),Object.assign(context,browserTimers));
+  await new Promise(resolve=>setImmediate(resolve));
+  const html = app.innerHTML;
+  assert.match(html,/class="cr-facit"[\s\S]*Västervik/);
+  for (const clue of ['L1','L2','L3','L4','L5']) assert.match(html,new RegExp(`<p>${clue}</p>`));
+  assert.match(html,/class="now"><span class="cr-pts">8<\/span><p>L2/);
+  assert.match(html,/Stora Grindö/);
+  assert.match(html,/Visa ledtråd 3 · 6 p/);
+  assert.match(html,/Drog nödbromsen/);
+  assert.match(html,/Kalmar[\s\S]*✓ Rätt \+8/);
+  assert.match(html,/cr-preview[\s\S]*Dressinen har dragit i nödbromsen/);
+  assert.doesNotMatch(html,/Aktivera ljud/);
+  assert.match(html,/Fråga 1\/2/);
+  listeners.keydown({key:' ',target:{tagName:'INPUT'},preventDefault(){}});
+  assert.equal(posts.length,0);
+  listeners.keydown({key:' ',target:{tagName:'BODY'},preventDefault(){}});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(posts.at(-1),['/api/game/next',{}]);
+  listeners.keydown({key:'s',target:{tagName:'BODY'},preventDefault(){}});
+  assert.deepEqual(posts.at(-1),['/api/tv',{mode:'scoreboard'}]);
+  // Bara ändrad TV-status ritar inte om vyn.
+  app.innerHTML = 'orörd';
+  events.onmessage({data:JSON.stringify({...initial,tvStatus:{audioReady:true,video:true,playing:true,time:3,duration:10}})});
+  assert.equal(app.innerHTML,'orörd');
+  events.onmessage({data:JSON.stringify({...initial,game:{...game,phase:'revealed',filmIndex:0,filmStage:'questions',filmAnswers:{0:{dressin:['Grindö','1433']}}}})});
+  assert.match(app.innerHTML,/Avslöja facit för Resefilm 1/);
+  assert.match(app.innerHTML,/Grindö[\s\S]*2 rätt · \+3/);
+  events.onmessage({data:JSON.stringify({...initial,phase:'waiting',game:{phase:'waiting',lastQuestionId:'q1',answers:{}},activeQuestion:null})});
+  assert.match(app.innerHTML,/Starta musikfråga: Timbuktu/);
 });

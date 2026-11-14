@@ -45,7 +45,15 @@ for (const q of db.questions) {
     q.musicQuestions = [{question:q.prompt || 'Vilken musik hör vi?',answer:q.answer || ''}];
     migrated = true;
   }
+  if (q.type === 'destination' && !Array.isArray(q.films)) {
+    // Gamla följdfrågor blir Resefilm 1 (utan video) så att inget innehåll försvinner.
+    const old = (q.followups || []).filter(item => item?.question);
+    q.films = [0,1,2].map(i => ({ video: '', questions: [0,1].map(j => ({ question: i === 0 ? old[j]?.question || '' : '', answer: i === 0 ? old[j]?.answer || '' : '' })) }));
+    delete q.followups; migrated = true;
+  }
 }
+db.tv ||= { mode: 'game', videoSeq: 0, videoAction: null };
+db.played ||= [];
 if (!fs.existsSync(dataFile) || migrated) save();
 let codes;
 if (fs.existsSync(codeFile)) codes = { ...defaultCodes, ...JSON.parse(fs.readFileSync(codeFile, 'utf8')) };
@@ -79,10 +87,16 @@ function distanceKm(a,b) { const toRad = n => n * Math.PI / 180, dLat=toRad(b.la
 const CLOSEST_MS = Number(process.env.CLOSEST_MS) || 10000;
 function closestResult(g,q) { const target={lat:q.answerLat,lon:q.answerLon}; const distances=Object.fromEntries(activeTeams().filter(team=>g.closestAnswers?.[team]).map(team=>[team,distanceKm(g.closestAnswers[team],target)])); const entries=Object.entries(distances).sort((a,b)=>a[1]-b[1]); const winners=entries.filter(item=>item[1]-entries[0][1] < .1).map(item=>item[0]); return {distances,winners,points:q.points || 10,winner:!entries.length ? null : winners.length > 1 ? 'tie' : entries[0][0]}; }
 const closestRemaining = g => (g.closestStage || 0) === 1 ? Math.max(0, (g.closestEndsAt || 0) - Date.now()) : 0;
+const filmUsed = f => !!(f?.video || f?.questions?.some(x => x.question || x.answer));
+const FILM_POINTS = [0, 1, 3], MUSIC_POINTS = [0, 1, 2];
+let tvStatus = null; // senaste rapport från storbilden (video, ljud); sparas inte
+const screenOnline = () => [...streams].filter(s => s.role === 'screen').length;
 function view(role) {
   const g = db.game, q = getQuestion(), active = !!q && g.phase !== 'waiting', teams = activeTeams();
   const base = { role, label: labels[role], phase: g.phase, round: g.round, teams: teamPublic(), activeTeams: teams, ...(isTeam(role) ? { score: db.scores[role], theme: teamById(role).theme } : {}) };
-  if (role === 'host') return { ...base, game: g, scores:db.scores, questions: db.questions, activeQuestion: q || null, remainingMs: closestRemaining(g), closestResult:q?.type==='closest' && g.closestStage === 3 ? closestResult(g,q) : undefined };
+  if (role === 'host') return { ...base, game: g, scores:db.scores, questions: db.questions, played: db.played, activeQuestion: q || null, remainingMs: closestRemaining(g), closestResult:q?.type==='closest' && g.closestStage === 3 ? closestResult(g,q) : undefined, tv: db.tv, tvStatus, screenOnline: screenOnline(), screenView: view('screen') };
+  if (role === 'screen' && db.tv.mode === 'blank') return { ...base, overlay: 'blank' };
+  if (role === 'screen' && db.tv.mode === 'scoreboard') return { ...base, overlay: 'scoreboard', scores: Object.fromEntries(teams.map(t => [t, db.scores[t]])) };
   if (!active) return base;
   if (q.type === 'closest') {
     const scope=q.scope;
@@ -101,15 +115,18 @@ function view(role) {
     clue: q.type === 'destination' ? q.clues[g.clueIndex] : q.prompt };
   if (role === 'screen') {
     const screenBase = { ...base, type: q.type, points: visible.points, brakes: Object.values(g.brakes || {}) };
+    const videoCmd = { seq: db.tv.videoSeq, action: db.tv.videoAction };
     if (q.type === 'music') {
       if (g.musicShown) return { ...screenBase, questions: q.musicQuestions.map(item => item.question),
         answers: g.musicRevealed ? q.musicQuestions.map(item => item.answer) : undefined };
-      return { ...screenBase, video: q.video ? `/api/video/${q.video}` : undefined };
+      return { ...screenBase, video: q.video ? `/api/video/${q.video}` : undefined, videoCmd };
     }
     if (g.phase !== 'revealed') return screenBase;
-    if (q.type === 'destination' && Number.isInteger(g.followupIndex)) {
-      const followup = q.followups?.[g.followupIndex];
-      if (followup) return { ...screenBase, followupNumber: g.followupIndex + 1, question: followup.question, answer: g.followupRevealed ? followup.answer : undefined };
+    const film = q.type === 'destination' && Number.isInteger(g.filmIndex) ? q.films?.[g.filmIndex] : null;
+    if (film) {
+      if (g.filmStage === 'video') return { ...screenBase, filmNumber: g.filmIndex + 1, filmStage: 'video', video: `/api/video/${film.video}`, videoCmd };
+      return { ...screenBase, filmNumber: g.filmIndex + 1, filmStage: g.filmStage, questions: film.questions.map(item => item.question),
+        answers: g.filmStage === 'revealed' ? film.questions.map(item => item.answer) : undefined };
     }
     return { ...screenBase, answer: q.answer };
   }
@@ -119,11 +136,12 @@ function view(role) {
       locked: g.musicAnswers?.[role] || null,
       answers: g.musicRevealed ? q.musicQuestions.map(item => item.answer) : undefined };
   }
-  if (q.type === 'destination' && g.phase === 'revealed' && Number.isInteger(g.followupIndex)) {
-    const followup = q.followups?.[g.followupIndex];
-    if (followup?.question) return { ...base, type: 'followup', followupIndex: g.followupIndex, question: followup.question,
-      locked: g.followupAnswers?.[g.followupIndex]?.[role] || null,
-      answer: g.followupRevealed ? followup.answer : undefined };
+  if (q.type === 'destination' && g.phase === 'revealed' && Number.isInteger(g.filmIndex) && q.films?.[g.filmIndex]) {
+    const film = q.films[g.filmIndex];
+    if (g.filmStage === 'video') return { ...base, type: 'film', filmIndex: g.filmIndex, filmStage: 'video' };
+    return { ...base, type: 'film', filmIndex: g.filmIndex, filmStage: g.filmStage, questions: film.questions.map(item => item.question),
+      locked: g.filmAnswers?.[g.filmIndex]?.[role] || null,
+      answers: g.filmStage === 'revealed' ? film.questions.map(item => item.answer) : undefined };
   }
   const mine = g.answers[role];
   if (mine) return { ...base, type: q.type, locked: mine, answer: g.phase === 'revealed' ? q.answer : undefined };
@@ -135,17 +153,19 @@ function send(res, status, body, headers = {}) {
 }
 function cookie(req) { return (req.headers.cookie || '').split(';').map(s => s.trim()).find(s => s.startsWith('sid='))?.slice(4); }
 function roleOf(req) { return sessions.get(cookie(req))?.role; }
-function broadcast() { for (const stream of streams) { try { stream.res.write(`data: ${JSON.stringify(view(stream.role))}\n\n`); } catch { streams.delete(stream); } } }
+function broadcast(only) { for (const stream of streams) { if (only && stream.role !== only) continue; try { stream.res.write(`data: ${JSON.stringify(view(stream.role))}\n\n`); } catch { streams.delete(stream); } } }
 function body(req) { return new Promise((resolve, reject) => { let raw = ''; req.on('data', c => { raw += c; if (raw.length > 100000) { reject(new Error('För stor begäran')); req.destroy(); } }); req.on('end', () => { try { resolve(JSON.parse(raw || '{}')); } catch { reject(new Error('Ogiltig JSON')); } }); }); }
 function validQuestion(input) {
   const type = ['music','closest'].includes(input.type) ? input.type : 'destination';
   const q = { id: input.id || crypto.randomUUID(), type, title: clean(input.title).slice(0, 120), answer: clean(input.answer).slice(0, 200) };
   if (type === 'destination') q.clues = Array.isArray(input.clues) ? input.clues.map(clean).slice(0, 5) : [];
   if (type === 'destination') {
-    q.followups = Array.isArray(input.followups) ? input.followups.slice(0, 2).map(item => ({ question: clean(item?.question).slice(0, 500), answer: clean(item?.answer).slice(0, 200) })) : [];
-    while (q.followups.length < 2) q.followups.push({ question: '', answer: '' });
-    if (q.followups.some(item => Boolean(item.question) !== Boolean(item.answer))) throw new Error('Fyll i både fråga och facit för varje följdfråga.');
-    if (q.followups[1].question && !q.followups[0].question) throw new Error('Fyll i följdfråga 1 före följdfråga 2.');
+    const films = Array.isArray(input.films) ? input.films : [];
+    q.films = [0,1,2].map(i => ({ video: clean(films[i]?.video), questions: [0,1].map(j => ({ question: clean(films[i]?.questions?.[j]?.question).slice(0, 500), answer: clean(films[i]?.questions?.[j]?.answer).slice(0, 200) })) }));
+    for (const [i, film] of q.films.entries()) {
+      if (film.video && (!/^[a-f0-9-]{36}\.mp4$/.test(film.video) || !fs.existsSync(path.join(mediaDir, film.video)))) throw new Error(`Videon till Resefilm ${i + 1} finns inte. Ladda upp den igen.`);
+      if (filmUsed(film) && film.questions.some(item => !item.question || !item.answer)) throw new Error(`Fyll i två frågor med facit för Resefilm ${i + 1}, eller lämna den helt tom.`);
+    }
   }
   if (type === 'music') {
     q.video = clean(input.video);
@@ -216,7 +236,10 @@ async function handler(req, res) {
   }
   if (p.startsWith('/api/video/') && req.method === 'GET') {
     const file = p.slice('/api/video/'.length);
-    if (role !== 'screen' || getQuestion()?.type !== 'music' || db.game.phase !== 'active' || getQuestion().video !== file || !/^[a-f0-9-]{36}\.mp4$/.test(file)) return send(res,403,{error:'Ingen åtkomst.'});
+    const vq = getQuestion(), vg = db.game;
+    const allowed = vq?.type === 'music' ? vg.phase === 'active' && vq.video === file
+      : vq?.type === 'destination' && vg.phase === 'revealed' && vg.filmStage === 'video' && vq.films?.[vg.filmIndex]?.video === file;
+    if (role !== 'screen' || !allowed || !/^[a-f0-9-]{36}\.mp4$/.test(file)) return send(res,403,{error:'Ingen åtkomst.'});
     const target = path.join(mediaDir,file);
     if (!fs.existsSync(target)) return send(res,404,{error:'Videon finns inte.'});
     const size = fs.statSync(target).size;
@@ -233,7 +256,9 @@ async function handler(req, res) {
     if (p === '/api/events' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
       res.write(`data: ${JSON.stringify(view(role))}\n\n`);
-      const stream = { res, role }; streams.add(stream); req.on('close', () => streams.delete(stream)); return;
+      const stream = { res, role }; streams.add(stream);
+      if (role === 'screen') broadcast('host');
+      req.on('close', () => { streams.delete(stream); if (role === 'screen') { if (!screenOnline()) tvStatus = null; broadcast('host'); } }); return;
     }
     if (req.method !== 'POST' || req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) return send(res, 403, { error: 'Ingen åtkomst.' });
     const input = await body(req);
@@ -256,15 +281,20 @@ async function handler(req, res) {
       g.answers[role] = { answer, points: q.type === 'destination' ? scores[g.clueIndex] : 1 };
       save(); broadcast(); return send(res, 200, view(role));
     }
-    if (p === '/api/followup-answer' && activeTeams().includes(role)) {
-      const g = db.game, index = g.followupIndex;
-      if (g.phase !== 'revealed' || getQuestion()?.type !== 'destination' || !Number.isInteger(index) || input.round !== g.round || input.index !== index || g.followupRevealed || !getQuestion()?.followups?.[index]?.question || g.followupAnswers?.[index]?.[role]) return send(res, 409, { error: 'Följdfrågan är stängd eller svaret redan låst.' });
-      const answer = clean(input.answer).slice(0, 200);
-      if (!answer) return send(res, 400, { error: 'Skriv ett svar.' });
-      g.followupAnswers ||= {};
-      g.followupAnswers[index] ||= {};
-      g.followupAnswers[index][role] = answer;
+    if (p === '/api/film-answer' && activeTeams().includes(role)) {
+      const g = db.game, index = g.filmIndex;
+      if (g.phase !== 'revealed' || getQuestion()?.type !== 'destination' || !Number.isInteger(index) || input.round !== g.round || input.index !== index || g.filmStage !== 'questions' || g.filmAnswers?.[index]?.[role]) return send(res, 409, { error: 'Resefilmens frågor är stängda eller svaret redan låst.' });
+      const answers = [0,1].map(i => clean(Array.isArray(input.answers) ? input.answers[i] : '').slice(0, 200));
+      if (!answers.some(Boolean)) return send(res, 400, { error: 'Skriv minst ett svar.' });
+      g.filmAnswers ||= {};
+      g.filmAnswers[index] ||= {};
+      g.filmAnswers[index][role] = answers;
       save(); broadcast(); return send(res, 200, view(role));
+    }
+    if (p === '/api/tv/status' && role === 'screen') {
+      const num = v => Number.isFinite(Number(v)) ? Math.max(0, Math.round(Number(v) * 10) / 10) : 0;
+      tvStatus = { video: !!input.video, playing: !!input.playing, ended: !!input.ended, time: num(input.time), duration: num(input.duration), audioReady: !!input.audioReady };
+      broadcast('host'); return send(res, 200, {});
     }
     if (p === '/api/music-answer' && activeTeams().includes(role)) {
       const g = db.game;
@@ -293,6 +323,15 @@ async function handler(req, res) {
       if (!activeTeams().includes(input.team) || !Number.isInteger(delta) || delta===0 || Math.abs(delta)>100 || db.scores[input.team]+delta<0) return send(res,400,{error:'Ange lag och 1–100 poäng. Poängen kan inte bli negativa.'});
       db.scores[input.team]+=delta; save(); broadcast(); return send(res,200,view(role));
     }
+    if (p === '/api/tv') {
+      if (!['game','scoreboard','blank'].includes(input.mode)) return send(res,400,{error:'Okänt läge för storbilden.'});
+      db.tv.mode = input.mode; save(); broadcast(); return send(res,200,view(role));
+    }
+    if (p === '/api/tv/video') {
+      if (!['play','pause','restart'].includes(input.action)) return send(res,400,{error:'Okänt videokommando.'});
+      db.tv.videoSeq++; db.tv.videoAction = input.action; save(); broadcast(); return send(res,200,view(role));
+    }
+    if (p === '/api/played/reset') { db.played = []; save(); broadcast(); return send(res,200,view(role)); }
     if (p === '/api/question/save') {
       const q = validQuestion(input);
       const i = db.questions.findIndex(x => x.id === q.id);
@@ -314,7 +353,9 @@ async function handler(req, res) {
       const startQuestion = db.questions.find(q => q.id === input.id);
       if (!startQuestion) return send(res, 404, { error: 'Frågan finns inte.' });
       if (startQuestion.type === 'music' && (!startQuestion.video || startQuestion.musicQuestions?.length !== 2)) return send(res,409,{error:'Redigera musikfrågan och lägg till MP4-video samt två frågor först.'});
-      db.game = { phase: 'active', questionId: input.id, clueIndex: 0, answers: {}, followupAnswers: {}, musicAnswers: {}, closestAnswers: {}, closestStage: 0, closestEndsAt: 0, closestScored: false, brakes: {}, round: g.round + 1 };
+      db.game = { phase: 'active', questionId: input.id, clueIndex: 0, answers: {}, filmAnswers: {}, musicAnswers: {}, closestAnswers: {}, closestStage: 0, closestEndsAt: 0, closestScored: false, brakes: {}, awards: {}, round: g.round + 1 };
+      db.tv.mode = 'game';
+      if (!db.played.includes(input.id)) db.played.push(input.id);
     } else if (p === '/api/game/next') {
       if (g.phase !== 'active' || getQuestion()?.type !== 'destination' || g.clueIndex >= 4) return send(res, 409, { error: 'Ingen ytterligare ledtråd.' });
       g.clueIndex++;
@@ -335,16 +376,34 @@ async function handler(req, res) {
       g.closestStage=stage;
       if (stage===1) { g.closestEndsAt=Date.now()+CLOSEST_MS; const round=g.round; setTimeout(() => { const cur=db.game; if (cur.round===round && cur.phase==='active' && cur.closestStage===1) { cur.closestStage=2; save(); broadcast(); } }, CLOSEST_MS+50).unref(); }
       if (stage===3 && !g.closestScored) { g.closestScored=true; const result=closestResult(g,q); for (const team of result.winners) db.scores[team]+=result.points; }
-    } else if (p === '/api/game/followup') {
-      const index = Number(input.index);
-      const followup = getQuestion()?.followups?.[index];
-      if (g.phase !== 'revealed' || getQuestion()?.type !== 'destination' || !Number.isInteger(index) || index < 0 || index > 1 || !followup?.question || (g.followupIndex === undefined && index !== 0) || (g.followupIndex !== undefined && index !== g.followupIndex + 1) || (g.followupIndex !== undefined && !g.followupRevealed)) return send(res, 409, { error: 'Följdfrågan kan inte visas ännu.' });
-      g.followupIndex = index; g.followupRevealed = false;
-    } else if (p === '/api/game/followup-reveal') {
-      if (g.phase !== 'revealed' || !Number.isInteger(g.followupIndex) || g.followupRevealed) return send(res, 409, { error: 'Ingen följdfråga att avslöja.' });
-      g.followupRevealed = true;
+    } else if (p === '/api/game/film') {
+      // Resefilmer körs i ordning; tomma filmer får hoppas över, men en påbörjad film måste avslöjas först.
+      const index = Number(input.index), film = getQuestion()?.films?.[index];
+      if (g.phase !== 'revealed' || getQuestion()?.type !== 'destination' || !Number.isInteger(index) || index < 0 || index > 2 || !filmUsed(film) || index <= (g.filmIndex ?? -1) || (Number.isInteger(g.filmIndex) && g.filmStage !== 'revealed')) return send(res, 409, { error: 'Resefilmen kan inte startas ännu.' });
+      g.filmIndex = index; g.filmStage = film.video ? 'video' : 'questions'; g.filmAnswers ||= {};
+    } else if (p === '/api/game/film-questions') {
+      if (g.phase !== 'revealed' || g.filmStage !== 'video') return send(res, 409, { error: 'Ingen resefilm visas just nu.' });
+      g.filmStage = 'questions';
+    } else if (p === '/api/game/film-reveal') {
+      if (g.phase !== 'revealed' || g.filmStage !== 'questions') return send(res, 409, { error: 'Inga resefilmsfrågor att avslöja.' });
+      g.filmStage = 'revealed';
+    } else if (p === '/api/game/award') {
+      // Sätter (inte adderar) ett lags poäng för en del av frågan, så att ett nytt tryck rättar ett tidigare.
+      const q = getQuestion(), team = input.team, key = String(input.key || ''), value = input.value, film = /^film([0-2])$/.exec(key);
+      if (g.phase === 'waiting' || !q || !activeTeams().includes(team) || !/^(dest|music|film[0-2])$/.test(key)) return send(res, 409, { error: 'Ingen aktiv fråga att dela ut poäng för.' });
+      let points = null;
+      if (value === null) points = 0;
+      else if (key === 'dest' && q.type === 'destination' && g.answers?.[team] && typeof value === 'boolean') points = value ? g.answers[team].points : 0;
+      else if (film && q.type === 'destination' && g.phase === 'revealed' && Number(film[1]) <= (g.filmIndex ?? -1) && filmUsed(q.films?.[film[1]]) && [0,1,2].includes(value)) points = FILM_POINTS[value];
+      else if (key === 'music' && q.type === 'music' && g.musicShown && [0,1,2].includes(value)) points = MUSIC_POINTS[value];
+      if (points === null) return send(res, 400, { error: 'Poängen kan inte delas ut för det här svaret.' });
+      g.awards ||= {}; g.awards[key] ||= {};
+      const previous = g.awards[key][team]?.points || 0;
+      if (db.scores[team] + points - previous < 0) return send(res, 409, { error: 'Poängen kan inte bli negativa.' });
+      db.scores[team] += points - previous;
+      if (value === null) delete g.awards[key][team]; else g.awards[key][team] = { value, points };
     } else if (p === '/api/game/wait') {
-      db.game = { phase: 'waiting', questionId: null, clueIndex: 0, answers: {}, round: g.round };
+      db.game = { phase: 'waiting', questionId: null, clueIndex: 0, answers: {}, round: g.round, lastQuestionId: g.questionId || g.lastQuestionId || null };
     } else return send(res, 404, { error: 'Hittades inte.' });
     save(); broadcast(); return send(res, 200, view(role));
   }
