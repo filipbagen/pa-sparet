@@ -267,3 +267,10 @@ test('spelledarens Show-vy visar manus, facit, lagens svar, storbildsförhandsvi
   events.onmessage({data:JSON.stringify({...initial,phase:'waiting',game:{phase:'waiting',lastQuestionId:'q1',answers:{}},activeQuestion:null})});
   assert.match(app.innerHTML,/Starta musikfråga: Timbuktu/);
 });
+
+test('kartredigeraren läser och skriver sina fält i formuläret, inte i <meta name="viewport">', () => {
+  const source = fs.readFileSync(path.join(__dirname,'public/app.js'),'utf8');
+  assert.match(fs.readFileSync(path.join(__dirname,'public/index.html'),'utf8'), /<meta name="viewport"/);
+  assert.doesNotMatch(source, /querySelector\('\[name="(viewport|answerLat|answerLon)"\]'\)/);
+  assert.match(source, /querySelector\('#questionForm \[name="viewport"\]'\)/);
+});

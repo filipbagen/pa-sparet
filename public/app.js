@@ -92,8 +92,9 @@ function mountMaps() {
     const scope='world';
     const question=state.questions.find(item=>item.id===editing);
     const saved=question?.viewport || null;
-    const viewport=document.querySelector('[name="viewport"]').value;
-    const draw=()=>window.GameMap.draw(editorMap,{scope,viewport:viewport?JSON.parse(viewport):saved,key:'editor',pins:editingPin?{mine:editingPin}:{},onViewport:area=>{editingViewport=area;document.querySelector('[name="viewport"]').value=JSON.stringify(area);},onPick:point=>{editingPin=point;document.querySelector('[name="answerLat"]').value=point.lat;document.querySelector('[name="answerLon"]').value=point.lon;draw();}});
+    // Obs: sidan har även <meta name="viewport">, så fälten måste sökas inom formuläret.
+    const viewport=document.querySelector('#questionForm [name="viewport"]').value;
+    const draw=()=>window.GameMap.draw(editorMap,{scope,viewport:viewport?JSON.parse(viewport):saved,key:'editor',pins:editingPin?{mine:editingPin}:{},onViewport:area=>{editingViewport=area;document.querySelector('#questionForm [name="viewport"]').value=JSON.stringify(area);},onPick:point=>{editingPin=point;document.querySelector('#questionForm [name="answerLat"]').value=point.lat;document.querySelector('#questionForm [name="answerLon"]').value=point.lon;draw();}});
     draw();
   }
   const teamMap=document.querySelector('#teamMap');
