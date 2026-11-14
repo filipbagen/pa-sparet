@@ -6,7 +6,7 @@
 
 | Role key  | View             | Purpose |
 |-----------|------------------|---------|
-| `host`    | Spelledare       | Edits questions, starts/advances/reveals, awards points |
+| `host`    | Spelledare       | Edits questions, starts/advances/reveals, awards points (automatic on localhost) |
 | `dressin` | Lag Dressin      | Team 1 phone |
 | `forsta`  | Lag Första klass | Team 2 phone |
 | `screen`  | Storbild         | Big-screen/TV display (plays sounds/video/map) |
@@ -27,13 +27,16 @@ npm test         # node --test --test-isolation=none server.test.js client.test.
 - `DATA_DIR` env var overrides the `data/` directory (the server tests use a temp dir via this).
 - `server.test.js` starts a real HTTP listener, so it fails with `EPERM` in sandboxes that forbid binding ports; that is an environment limit, not a bug. `client.test.js` runs `public/app.js` in a `node:vm` context with fake `document`/`fetch`, with no browser.
 - The host session can also act as the screen in its own tab (same browser, one cookie): `/view/screen` is allowed for `host`, and `/api/state?view=screen` / `/api/events?view=screen` return `view('screen')` (the SSE stream is registered with role `screen`, so it counts for `screenOnline`). Screen-only media/assets and `tv/status` accept `host` too (`seesScreen()`). The client detects this as `asScreen`; its exit button closes the tab instead of logging out. When run in a TTY, `npm start` listens for keys: O opens the host page, N opens `/view/screen`, Q quits.
-- Login: users type only an access code (`data/codes.json`; defaults include `ledare`, `förstaklass`, `dressin`, `x2000`, `mälartåg`, `loket`, `storbild`); the code decides the role. All role codes must be distinct and non-empty or the server refuses to boot. Inactive teams cannot log in. Sessions are in-memory, so restarting logs everyone out.
+- Lobby: the server always boots with `db.lobby = true` (game reset to waiting). Phones open `/` without a session and get the guest projection `view('guest')` (`{lobby, teams, claimed}`, also via `GET /api/lobby` and an unauthenticated SSE stream); `POST /api/join {team}` creates a team session, one phone per team (claims = team roles present in `sessions`). `POST /api/leave` (team, lobby only), host-only `lobby/release|open|reset|go`. `go` needs ≥2 claimed teams, sets `activeTeams` to them and starts the first unplayed question (refuses and stays in the lobby if that is a music question without video). During a game only unclaimed active teams can be joined. In the lobby the screen view is `{lobby, claimed, joinUrl}` (LAN IPv4 from `os.networkInterfaces()`), rendered with a QR from `public/qr.js` (own encoder, byte mode, EC M, v1–10). Sessions are persisted in `data/sessions.json` (gitignored).
+- Requests from loopback without a session are treated as `host` (`isLocal()`; disable with `LOCAL_HOST_LOGIN=0`, which the preview of the phone view needs). `/api/me` returns `local`, and the host's Avsluta button is hidden then.
+- Login (fallback, "Logga in med kod"): users type only an access code (`data/codes.json`; defaults include `ledare`, `förstaklass`, `dressin`, `x2000`, `mälartåg`, `loket`, `storbild`); the code decides the role. All role codes must be distinct and non-empty or the server refuses to boot. Inactive teams cannot log in. A team code login takes the team over from any other phone.
 
 ## Structure
 
 ```
 server.js            entire backend (~400 lines, dense, one-statement-per-line style)
-public/index.html    one-line shell; loads /map.js then /app.js
+public/index.html    one-line shell; loads /map.js, /qr.js, then /app.js
+public/qr.js         dependency-free QR encoder (window.QR.svg/matrix; also require()-able for tests)
 public/app.js        entire frontend: login, all four role views, audio, SSE client
 public/map.js        canvas map for "closest" questions (Mercator, pan/zoom, pins)
 public/style.css     styles

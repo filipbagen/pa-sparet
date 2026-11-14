@@ -13,29 +13,67 @@ const teams = [
 const activeTeams = ['dressin', 'forsta'];
 
 const browserTimers = { setInterval() {}, performance: { now: () => 0 } };
-test('startsidan ritas även när webbläsaren reserverar window.top', async () => {
-  const app = { innerHTML: '' };
-  const requests = [];
+test('startsidan visar lagvalet där upptagna lag är låsta, och kodinloggning finns kvar', async () => {
+  const app = { innerHTML: '' }, codeLink = {}, requests = [];
+  let events;
+  const lobby = { role:null, lobby:true, teams, activeTeams, claimed:['forsta'] };
   const context = {
-    document: {
-      querySelector: selector => selector === '#app' ? app : null,
-      addEventListener() {},
-    },
-    fetch: async url => {
-      requests.push(url);
-      return { ok: true, json: async () => ({ role: null }) };
-    },
+    document: { body:{}, querySelector: selector => selector === '#app' ? app : selector === '#codeLogin' ? codeLink : null, addEventListener() {} },
+    fetch: async url => { requests.push(url); return { ok: true, json: async () => url === '/api/me' ? { role: null } : lobby }; },
+    EventSource: class { constructor(url) { events = this; this.url = url; } },
   };
+  codeLink.addEventListener = (name, fn) => { codeLink.click = fn; };
   // window.top är en skrivskyddad, icke-konfigurerbar egenskap i webbläsaren.
   Object.defineProperty(context, 'top', { value: context, writable: false, configurable: false });
   const source = fs.readFileSync(path.join(__dirname, 'public/app.js'), 'utf8');
   assert.doesNotThrow(() => vm.runInNewContext(source, Object.assign(context, browserTimers)));
   await new Promise(resolve => setImmediate(resolve));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(requests, ['/api/me', '/api/lobby']);
+  assert.equal(events.url, '/api/events');
+  assert.match(app.innerHTML, /Välj ert lag/);
+  assert.equal((app.innerHTML.match(/data-join=/g) || []).length, 5);
+  assert.match(app.innerHTML, /data-join="forsta" disabled><b>Första klass<\/b><small>Upptaget/);
+  assert.match(app.innerHTML, /data-join="dressin" ><b>Dressinen/);
+  assert.doesNotMatch(app.innerHTML, /type="password"/);
+  events.onmessage({ data: JSON.stringify({ ...lobby, claimed: ['forsta', 'dressin'] }) });
+  assert.match(app.innerHTML, /data-join="dressin" disabled/);
+  codeLink.click({ preventDefault() {} });
   assert.match(app.innerHTML, /id="login"/);
   assert.match(app.innerHTML, /Åtkomstkod/);
-  assert.doesNotMatch(app.innerHTML, /<select|name="role"/);
-  assert.deepEqual(requests, ['/api/me']);
   assert.equal(context.top, context);
+});
+
+test('storbilden visar QR-kod och vilka lag som är ombord i lobbyn', async () => {
+  const app = { innerHTML: '' }, logout = {};
+  const qr = require('./public/qr.js');
+  const initial = { role:'screen', label:'Storbild', phase:'waiting', round:0, lobby:true, teams, activeTeams, claimed:['dressin'], joinUrl:'http://192.168.1.42:3000/' };
+  const context = {
+    window: { QR: qr },
+    document: { body:{}, querySelector: selector => ({'#app':app,'#logout':logout}[selector] || null), addEventListener() {} },
+    location: { pathname:'/view/screen' },
+    fetch: async url => ({ ok:true, json:async () => url === '/api/me' ? { role:'screen' } : initial }),
+    EventSource: class {},
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'public/app.js'),'utf8'), Object.assign(context, browserTimers));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(app.innerHTML, /<svg[^>]*class="qr"/);
+  assert.match(app.innerHTML, /192\.168\.1\.42:3000/);
+  assert.match(app.innerHTML, /class="on" style="--team:#168b53"><span>Dressinen<\/span><b>✓ Ombord/);
+  assert.match(app.innerHTML, /<span>Loket<\/span><b>Ledigt/);
+  assert.match(app.innerHTML, /1 av 5 lag ombord/);
+});
+
+test('QR-kodaren ger rätt storlek, sökmönster och tidsmönster', () => {
+  const qr = require('./public/qr.js');
+  for (const [text, size] of [['http://10.0.0.5:3000/', 25], ['http://192.168.100.200:3000/', 29], ['x'.repeat(60), 33], ['x'.repeat(120), 45]]) {
+    const m = qr.matrix(text);
+    assert.equal(m.length, size);
+    for (const [r, c] of [[0, 0], [0, size - 7], [size - 7, 0]]) { assert.equal(m[r][c], true); assert.equal(m[r + 1][c + 1], false); assert.equal(m[r + 3][c + 3], true); }
+    for (let i = 8; i < size - 8; i++) { assert.equal(m[6][i], i % 2 === 0); assert.equal(m[i][6], i % 2 === 0); }
+    assert.equal(m[size - 8][8], true);
+  }
+  assert.throws(() => qr.matrix('x'.repeat(400)));
 });
 
 test('storbilden spelar rätt bromsljud en gång per händelse', async () => {

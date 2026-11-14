@@ -8,18 +8,19 @@ En laglek för spelledare, storbild och upp till fem lag (Första klass, Dressin
 2. Öppna projektmappen i VS Code.
 3. Öppna **Terminal → New Terminal** och kör `npm start`.
 4. Öppna `http://localhost:3000` i webbläsaren.
-5. Ange enbart åtkomstkoden. Servern väljer rätt vy automatiskt (`ledare`, `förstaklass`, `dressin`, `x2000`, `mälartåg`, `loket`, `storbild`). Bara aktiva lag kan logga in.
-6. Logga in på respektive enhet med dess kod. Varje enhet får en egen inloggning. Koderna finns i `data/codes.json`.
+5. Lagen väljer lag med ett tryck via QR-koden i lobbyn (se nedan). Koder behövs bara för enheter som inte är spelledarens dator och inte är ett lag, t.ex. en storbild på en annan dator (`storbild`).
 
-### Storbilden på samma dator som spelledaren
+### Starta en kväll: lobby och QR-kod
 
-Spelledaren och storbilden kan köras i samma webbläsare med samma inloggning:
+1. Kör `npm start` på spelledarens dator. Tryck **O** för spelledarvyn och **N** för storbilden i en ny flik. Allt som öppnas på den egna datorn (`localhost`) är automatiskt spelledare och storbild, utan kod.
+2. Dra storbildsfliken till TV:n, gör den till helskärm och klicka **Aktivera ljud** en gång.
+3. Storbilden visar en **lobby** med en QR-kod och alla fem lag. Lagen ansluter telefonerna till samma Wi-Fi, skannar QR-koden (eller skriver adressen under den) och trycker på sitt lag. Inga lösenord behövs.
+4. Ett lag kan bara väljas av en telefon. Valda lag tänds på storbilden och låses på de andra telefonerna. En telefon kan trycka **Byt lag** så länge lobbyn är öppen.
+5. Tryck **Kör!** (eller mellanslag) i spelledarvyn när minst två lag är ombord. Lagen som är ombord blir lagen i spelet och första ospelade frågan startar direkt.
 
-1. Kör `npm start` och logga in med `ledare` (tryck **O** i terminalen för att öppna sidan).
-2. Tryck **N** i terminalen, eller klicka **Öppna storbild** (kortkommando **N**) i spelledarvyn. Storbilden öppnas i en ny flik.
-3. Dra fliken till TV:n, gör den till helskärm och klicka **Aktivera ljud** en gång.
+Servern startar alltid i lobbyn. Inloggningarna sparas i `data/sessions.json` (som inte checkas in), så telefonerna behåller sitt lag om servern startas om. I lobbyn kan spelledaren trycka **Frigör** på ett lag (t.ex. om fel telefon tog det) och **Nytt spel** för att nollställa poäng och spelade frågor. Om en telefon dör under spelet: tryck **Frigör** under **Förbered → Telefoner**; laget kan sedan väljas igen via QR-koden. **Tillbaka till lobbyn** under Förbered öppnar lobbyn igen, t.ex. för ett nytt lag. Statusen **TV frånkopplad** uppe till höger betyder att storbildsfliken inte är öppen; klicka på den eller tryck N.
 
-Statusen uppe till höger i spelledarvyn blir då grön (**TV redo**). Knappen **Stäng storbild** stänger bara TV-fliken och loggar inte ut spelledaren. Koden `storbild` behövs bara om storbilden körs på en annan enhet. Tryck **Q** i terminalen för att stoppa servern.
+Åtkomstkoderna i `data/codes.json` fungerar fortfarande via **Logga in med kod** på startsidan, t.ex. för en storbild på en annan dator. Tryck **Q** i terminalen för att stoppa servern.
 
 Inga `npm install`-steg behövs; appen använder bara Node.js inbyggda moduler.
 

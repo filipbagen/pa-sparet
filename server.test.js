@@ -6,6 +6,7 @@ const os = require('node:os');
 const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pasparet-test-'));
 process.env.DATA_DIR = testDataDir;
 process.env.CLOSEST_MS = '300';
+process.env.LOCAL_HOST_LOGIN = '0'; // testerna anropar 127.0.0.1 och ska inte bli spelledare automatiskt
 const { server } = require('./server');
 const codes = JSON.parse(fs.readFileSync(path.join(testDataDir, 'codes.json')));
 after(() => fs.rmSync(testDataDir,{recursive:true,force:true}));
@@ -468,5 +469,80 @@ test('spelledaren kan öppna storbilden i en egen flik med samma inloggning', as
     assert.equal((await request('/assets/resmal-loop.mp3', dressin)).status,403);
     assert.equal((await request('/api/tv/status', host, {audioReady:true})).status,200);
     assert.equal((await (await request('/api/state', host)).json()).tvStatus.audioReady,true);
+  } finally { await new Promise(resolve => server.close(resolve)); }
+});
+
+test('lobbyn: lag väljs med ett tryck, ett lag per telefon, spelledaren frigör och kör', async () => {
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const request = async (p, cookie, data) => fetch(base + p, {method:data ? 'POST' : 'GET', headers:{...(cookie ? {Cookie:cookie} : {}), ...(data ? {'Content-Type':'application/json'} : {})}, body:data ? JSON.stringify(data) : undefined});
+  const cookieOf = r => r.headers.get('set-cookie')?.split(';')[0];
+  try {
+    const host = cookieOf(await request('/api/login', null, {code:codes.host}));
+    for (const team of ['dressin','forsta','x2000','malartag','loket']) await request('/api/lobby/release', host, {team});
+    assert.equal((await request('/api/lobby/open', host, {})).status,200);
+    let guest = await (await request('/api/lobby')).json();
+    assert.equal(guest.lobby,true);
+    assert.deepEqual(guest.claimed,[]);
+    for (const field of ['questions','game','scores','joinUrl','answer']) assert.equal(Object.hasOwn(guest,field),false);
+    assert.equal((await request('/api/join', null, {team:'tåget'})).status,400);
+    assert.equal((await request('/api/join', host, {team:'dressin'})).status,409);
+    const joined = await request('/api/join', null, {team:'dressin'});
+    assert.equal(joined.status,200);
+    let phoneA = cookieOf(joined);
+    assert.equal((await request('/api/join', null, {team:'dressin'})).status,409);
+    assert.equal((await request('/api/join', phoneA, {team:'dressin'})).status,200);
+    const lobbyTeam = await (await request('/api/state', phoneA)).json();
+    assert.equal(lobbyTeam.role,'dressin');
+    assert.equal(lobbyTeam.lobby,true);
+    assert.equal(Object.hasOwn(lobbyTeam,'type'),false);
+    // Byta lag frigör det gamla
+    const switched = await request('/api/join', phoneA, {team:'loket'});
+    assert.equal(switched.status,200); phoneA = cookieOf(switched);
+    assert.deepEqual((await (await request('/api/lobby')).json()).claimed,['loket']);
+    assert.equal((await request('/api/state', phoneA)).status,200);
+    const phoneB = cookieOf(await request('/api/join', null, {team:'x2000'}));
+    const screenView = (await (await request('/api/state', host)).json()).screenView;
+    assert.deepEqual(screenView.claimed,['x2000','loket']);
+    assert.match(screenView.joinUrl,/^http:\/\/[^/]+:\d+\/$/);
+    assert.equal(Object.hasOwn(screenView,'type'),false);
+    // Lämna lobbyn
+    assert.equal((await request('/api/leave', phoneB, {})).status,200);
+    assert.equal((await request('/api/state', phoneB)).status,401);
+    assert.equal((await request('/api/lobby/go', host, {})).status,409);
+    const phoneC = cookieOf(await request('/api/join', null, {team:'forsta'}));
+    assert.equal((await request('/api/lobby/go', phoneC, {})).status,403);
+    // Kod-inloggning tar över laget från en annan telefon
+    const coded = cookieOf(await request('/api/login', null, {code:codes.forsta}));
+    assert.equal((await request('/api/state', phoneC)).status,401);
+    assert.equal((await request('/api/state', coded)).status,200);
+    assert.equal((await request('/api/lobby/reset', host, {})).status,200);
+    assert.ok(Object.values((await (await request('/api/state', host)).json()).scores).every(v => v === 0));
+    const broken = (await (await request('/api/state', host)).json()).questions.find(q => q.type === 'music' && !q.video);
+    if (broken) {
+      assert.equal((await (await request('/api/state', host)).json()).questions[0].id === broken.id ? (await request('/api/lobby/go', host, {})).status : 409, 409);
+      assert.equal((await (await request('/api/state', host)).json()).lobby,true);
+      await request('/api/question/delete', host, {id:broken.id});
+    }
+    const go = await request('/api/lobby/go', host, {});
+    assert.equal(go.status,200);
+    const after = await go.json();
+    assert.equal(after.lobby,false);
+    assert.deepEqual(after.activeTeams,['forsta','loket']);
+    assert.equal(after.game.phase,'active');
+    assert.equal(after.game.questionId,after.questions[0].id);
+    assert.equal((await request('/api/lobby/go', host, {})).status,409);
+    assert.equal((await request('/api/lobby/reset', host, {})).status,409);
+    assert.equal((await request('/api/leave', phoneA, {})).status,409);
+    // Under spelet: bara lediga aktiva lag kan tas, och spelledaren kan frigöra en död telefon
+    assert.equal((await request('/api/join', null, {team:'dressin'})).status,409);
+    assert.equal((await request('/api/join', null, {team:'loket'})).status,409);
+    assert.equal((await request('/api/lobby/release', host, {team:'loket'})).status,200);
+    assert.equal((await request('/api/state', phoneA)).status,401);
+    const rejoined = await request('/api/join', null, {team:'loket'});
+    assert.equal(rejoined.status,200);
+    assert.equal((await (await request('/api/state', cookieOf(rejoined))).json()).type,after.questions[0].type);
+    assert.equal((await request('/api/join', cookieOf(rejoined), {team:'forsta'})).status,409);
+    assert.ok(JSON.parse(fs.readFileSync(path.join(testDataDir,'sessions.json'))));
   } finally { await new Promise(resolve => server.close(resolve)); }
 });

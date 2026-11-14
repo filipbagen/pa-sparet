@@ -2,6 +2,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const os = require('node:os');
 const { Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 
@@ -9,6 +10,7 @@ const root = __dirname;
 const dataDir = process.env.DATA_DIR || path.join(root, 'data');
 const dataFile = path.join(dataDir, 'game.json');
 const codeFile = path.join(dataDir, 'codes.json');
+const sessionFile = path.join(dataDir, 'sessions.json');
 const mediaDir = path.join(dataDir, 'media');
 fs.mkdirSync(dataDir, { recursive: true });
 fs.mkdirSync(mediaDir, { recursive: true });
@@ -63,7 +65,19 @@ const normalizeCode = code => code.trim().normalize('NFC');
 if (roles.some(role => typeof codes[role] !== 'string' || !normalizeCode(codes[role])) || new Set(roles.map(role => normalizeCode(codes[role]))).size !== roles.length) {
   throw new Error('Alla roller i data/codes.json måste ha olika, icke-tomma koder.');
 }
-const sessions = new Map();
+// Inloggningar sparas i data/sessions.json (ej i git) så att lagen inte kastas ut när servern startas om.
+let sessions = new Map();
+try { if (fs.existsSync(sessionFile)) sessions = new Map(Object.entries(JSON.parse(fs.readFileSync(sessionFile, 'utf8'))).filter(([, s]) => roles.includes(s?.role))); } catch {}
+function saveSessions() { const temp = sessionFile + '.tmp'; fs.writeFileSync(temp, JSON.stringify(Object.fromEntries(sessions))); fs.renameSync(temp, sessionFile); }
+const claimedTeams = () => teamIds.filter(id => [...sessions.values()].some(s => s.role === id));
+// Allt som öppnas på spelledarens egen dator (localhost) är spelledare utan kod. LOCAL_HOST_LOGIN=0 stänger av det.
+const isLocal = req => process.env.LOCAL_HOST_LOGIN !== '0' && ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket?.remoteAddress);
+function joinUrl() {
+  const port = server.address()?.port || Number(process.env.PORT || 3000);
+  const nets = Object.values(os.networkInterfaces()).flat().filter(a => a && (a.family === 'IPv4' || a.family === 4) && !a.internal);
+  const pick = nets.find(a => /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a.address)) || nets[0];
+  return `http://${pick ? pick.address : 'localhost'}:${port}/`;
+}
 const streams = new Set();
 const scores = [10, 8, 6, 4, 2];
 const mapScopes = { sweden:{south:55,north:70,west:10,east:25}, europe:{south:35,north:72,west:-12,east:35}, world:{south:-60,north:85,west:-180,east:180} };
@@ -77,7 +91,10 @@ if (!Array.isArray(db.activeTeams) || db.activeTeams.length !== activeTeams().le
   db.activeTeams = activeTeams();
   migrated = true;
 }
-if (migrated) save();
+// Varje start börjar i lobbyn där lagen väljer lag via QR-koden.
+db.lobby = true;
+db.game = { phase: 'waiting', questionId: null, clueIndex: 0, answers: {}, round: db.game?.round || 0, lastQuestionId: db.game?.questionId || db.game?.lastQuestionId || null };
+save();
 const getQuestion = () => db.questions.find(q => q.id === db.game.questionId);
 const clean = s => String(s ?? '').trim().slice(0, 3000);
 const inScope = (lat,lon,scope) => Number.isFinite(lat) && Number.isFinite(lon) && lat >= mapScopes[scope].south && lat <= mapScopes[scope].north && lon >= mapScopes[scope].west && lon <= mapScopes[scope].east;
@@ -93,9 +110,12 @@ let tvStatus = null; // senaste rapport från storbilden (video, ljud); sparas i
 const screenOnline = () => [...streams].filter(s => s.role === 'screen').length;
 function view(role) {
   const g = db.game, q = getQuestion(), active = !!q && g.phase !== 'waiting', teams = activeTeams();
-  const base = { role, label: labels[role], phase: g.phase, round: g.round, teams: teamPublic(), activeTeams: teams, ...(isTeam(role) ? { score: db.scores[role], theme: teamById(role).theme } : {}) };
-  if (role === 'host') return { ...base, game: g, scores:db.scores, questions: db.questions, played: db.played, activeQuestion: q || null, remainingMs: closestRemaining(g), closestResult:q?.type==='closest' && g.closestStage === 3 ? closestResult(g,q) : undefined, tv: db.tv, tvStatus, screenOnline: screenOnline(), screenView: view('screen') };
+  if (role === 'guest') return { role: null, lobby: !!db.lobby, teams: teamPublic(), activeTeams: teams, claimed: claimedTeams() };
+  const base = { role, label: labels[role], phase: g.phase, round: g.round, lobby: !!db.lobby, teams: teamPublic(), activeTeams: teams, ...(isTeam(role) ? { score: db.scores[role], theme: teamById(role).theme } : {}) };
+  if (role === 'host') return { ...base, claimed: claimedTeams(), joinUrl: joinUrl(), game: g, scores:db.scores, questions: db.questions, played: db.played, activeQuestion: q || null, remainingMs: closestRemaining(g), closestResult:q?.type==='closest' && g.closestStage === 3 ? closestResult(g,q) : undefined, tv: db.tv, tvStatus, screenOnline: screenOnline(), screenView: view('screen') };
   if (role === 'screen' && db.tv.mode === 'blank') return { ...base, overlay: 'blank' };
+  if (role === 'screen' && db.lobby) return { ...base, claimed: claimedTeams(), joinUrl: joinUrl() };
+  if (isTeam(role) && db.lobby) return base;
   if (role === 'screen' && db.tv.mode === 'scoreboard') return { ...base, overlay: 'scoreboard', scores: Object.fromEntries(teams.map(t => [t, db.scores[t]])) };
   if (!active) return base;
   if (q.type === 'closest') {
@@ -153,7 +173,7 @@ function send(res, status, body, headers = {}) {
   res.end(JSON.stringify(body));
 }
 function cookie(req) { return (req.headers.cookie || '').split(';').map(s => s.trim()).find(s => s.startsWith('sid='))?.slice(4); }
-function roleOf(req) { return sessions.get(cookie(req))?.role; }
+function roleOf(req) { return sessions.get(cookie(req))?.role || (isLocal(req) ? 'host' : undefined); }
 function broadcast(only) { for (const stream of streams) { if (only && stream.role !== only) continue; try { stream.res.write(`data: ${JSON.stringify(view(stream.role))}\n\n`); } catch { streams.delete(stream); } } }
 function body(req) { return new Promise((resolve, reject) => { let raw = ''; req.on('data', c => { raw += c; if (raw.length > 100000) { reject(new Error('För stor begäran')); req.destroy(); } }); req.on('end', () => { try { resolve(JSON.parse(raw || '{}')); } catch { reject(new Error('Ogiltig JSON')); } }); }); }
 function validQuestion(input) {
@@ -184,6 +204,14 @@ function validQuestion(input) {
   if (!q.title || (type === 'destination' && (!q.answer || q.clues.length !== 5 || q.clues.some(x => !x)))) throw new Error('Fyll i titel, facit och alla ledtrådar.');
   return q;
 }
+function startQuestion(id) {
+  const q = db.questions.find(item => item.id === id);
+  if (q.type === 'music' && (!q.video || q.musicQuestions?.length !== 2)) return 'Redigera musikfrågan och lägg till MP4-video samt två frågor först.';
+  db.game = { phase: 'active', questionId: id, clueIndex: 0, answers: {}, filmAnswers: {}, musicAnswers: {}, closestAnswers: {}, closestStage: 0, closestEndsAt: 0, closestScored: false, brakes: {}, awards: {}, round: db.game.round + 1 };
+  db.tv.mode = 'game'; db.lobby = false;
+  if (!db.played.includes(id)) db.played.push(id);
+  return null;
+}
 async function handler(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const p = url.pathname;
@@ -192,12 +220,27 @@ async function handler(req, res) {
     const input = await body(req);
     const matchedRole = typeof input.code === 'string' && roles.find(role => normalizeCode(input.code) === normalizeCode(codes[role]));
     if (!matchedRole) return send(res, 401, { error: 'Fel kod.' });
-    if (isTeam(matchedRole) && !activeTeams().includes(matchedRole)) return send(res, 403, { error: 'Laget är inte aktivt i den här omgången.' });
-    const sid = crypto.randomBytes(32).toString('hex'); sessions.set(sid, { role: matchedRole });
+    if (isTeam(matchedRole) && !db.lobby && !activeTeams().includes(matchedRole)) return send(res, 403, { error: 'Laget är inte aktivt i den här omgången.' });
+    if (isTeam(matchedRole)) for (const [key, s] of sessions) if (s.role === matchedRole) sessions.delete(key);
+    const sid = crypto.randomBytes(32).toString('hex'); sessions.set(sid, { role: matchedRole }); saveSessions(); if (isTeam(matchedRole)) broadcast();
     return send(res, 200, { role: matchedRole }, { 'Set-Cookie': `sid=${sid}; HttpOnly; SameSite=Strict; Path=/` });
   }
-  if (p === '/api/logout' && req.method === 'POST') { sessions.delete(cookie(req)); return send(res, 200, {}, { 'Set-Cookie': 'sid=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict' }); }
-  if (p === '/api/me') return send(res, 200, { role: role || null });
+  if (p === '/api/logout' && req.method === 'POST') { if (sessions.delete(cookie(req))) { saveSessions(); broadcast(); } return send(res, 200, {}, { 'Set-Cookie': 'sid=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict' }); }
+  if (p === '/api/me') return send(res, 200, { role: role || null, local: isLocal(req) && !sessions.has(cookie(req)) });
+  if (p === '/api/lobby' && req.method === 'GET') return send(res, 200, view('guest'));
+  if (p === '/api/join' && req.method === 'POST') {
+    // Ett lag väljs med ett tryck i lobbyn; ett lag kan bara ha en telefon.
+    if (req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) return send(res, 403, { error: 'Ingen åtkomst.' });
+    const input = await body(req), team = input.team, current = sessions.get(cookie(req));
+    if (!isTeam(team)) return send(res, 400, { error: 'Välj ett lag.' });
+    if (role === 'host' || role === 'screen') return send(res, 409, { error: 'Spelledarens dator kan inte välja lag. Använd en telefon.' });
+    if (!db.lobby && (isTeam(current?.role) || !activeTeams().includes(team))) return send(res, 409, { error: 'Spelet har redan börjat. Be spelledaren öppna lobbyn igen.' });
+    if (claimedTeams().includes(team) && current?.role !== team) return send(res, 409, { error: 'Laget är redan taget. Välj ett annat.' });
+    if (current?.role === team) return send(res, 200, { role: team });
+    if (current) sessions.delete(cookie(req));
+    const sid = crypto.randomBytes(32).toString('hex'); sessions.set(sid, { role: team }); saveSessions(); broadcast();
+    return send(res, 200, { role: team }, { 'Set-Cookie': `sid=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400` });
+  }
   if (p === '/api/image/upload' && req.method === 'POST') {
     if (role !== 'host' || req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) return send(res,403,{error:'Ingen åtkomst.'});
     const extensions={'image/png':'png','image/jpeg':'jpg','image/webp':'webp'};
@@ -252,9 +295,9 @@ async function handler(req, res) {
     return fs.createReadStream(target,{start,end}).pipe(res);
   }
   if (p.startsWith('/api/')) {
-    if (!role) return send(res, 401, { error: 'Logga in.' });
+    if (!role && !(p === '/api/events' && req.method === 'GET')) return send(res, 401, { error: 'Logga in.' });
     // Spelledaren kan öppna storbilden i en egen flik med samma inloggning (?view=screen).
-    const viewRole = role === 'host' && url.searchParams.get('view') === 'screen' ? 'screen' : role;
+    const viewRole = !role ? 'guest' : role === 'host' && url.searchParams.get('view') === 'screen' ? 'screen' : role;
     if (p === '/api/state' && req.method === 'GET') return send(res, 200, view(viewRole));
     if (p === '/api/events' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
@@ -283,6 +326,11 @@ async function handler(req, res) {
       if (!answer) return send(res, 400, { error: 'Skriv ett svar.' });
       g.answers[role] = { answer, points: q.type === 'destination' ? scores[g.clueIndex] : 1 };
       save(); broadcast(); return send(res, 200, view(role));
+    }
+    if (p === '/api/leave' && isTeam(role)) {
+      if (!db.lobby) return send(res, 409, { error: 'Lag kan bara bytas i lobbyn.' });
+      sessions.delete(cookie(req)); saveSessions(); broadcast();
+      return send(res, 200, {}, { 'Set-Cookie': 'sid=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict' });
     }
     if (p === '/api/film-answer' && activeTeams().includes(role)) {
       const g = db.game, index = g.filmIndex;
@@ -334,6 +382,28 @@ async function handler(req, res) {
       if (!['play','pause','restart'].includes(input.action)) return send(res,400,{error:'Okänt videokommando.'});
       db.tv.videoSeq++; db.tv.videoAction = input.action; save(); broadcast(); return send(res,200,view(role));
     }
+    if (p === '/api/lobby/release') {
+      // Frigör ett lag (t.ex. om telefonen dött) så att en annan telefon kan ta det.
+      if (!isTeam(input.team)) return send(res, 400, { error: 'Okänt lag.' });
+      for (const [key, s] of sessions) if (s.role === input.team) sessions.delete(key);
+      for (const stream of streams) if (stream.role === input.team) { streams.delete(stream); try { stream.res.end(); } catch {} }
+      saveSessions(); broadcast(); return send(res, 200, view(role));
+    }
+    if (p === '/api/lobby/open') { db.lobby = true; db.tv.mode = 'game'; db.game = { phase: 'waiting', questionId: null, clueIndex: 0, answers: {}, round: db.game.round, lastQuestionId: db.game.questionId || db.game.lastQuestionId || null }; save(); broadcast(); return send(res, 200, view(role)); }
+    if (p === '/api/lobby/reset') {
+      if (!db.lobby) return send(res, 409, { error: 'Ett nytt spel kan bara startas från lobbyn.' });
+      for (const id of teamIds) db.scores[id] = 0; db.played = []; db.game.lastQuestionId = null; save(); broadcast(); return send(res, 200, view(role));
+    }
+    if (p === '/api/lobby/go') {
+      const claimed = claimedTeams();
+      if (!db.lobby) return send(res, 409, { error: 'Spelet är redan igång.' });
+      if (claimed.length < 2) return send(res, 409, { error: 'Minst två lag måste vara ombord.' });
+      const first = db.questions.find(q => !db.played.includes(q.id));
+      if (first?.type === 'music' && (!first.video || first.musicQuestions?.length !== 2)) return send(res, 409, { error: `Första frågan (${first.title}) saknar video. Redigera den eller flytta ned den innan ni kör.` });
+      db.activeTeams = claimed; db.lobby = false;
+      if (first) startQuestion(first.id);
+      save(); broadcast(); return send(res, 200, view(role));
+    }
     if (p === '/api/played/reset') { db.played = []; save(); broadcast(); return send(res,200,view(role)); }
     if (p === '/api/question/save') {
       const q = validQuestion(input);
@@ -353,12 +423,8 @@ async function handler(req, res) {
     }
     const g = db.game;
     if (p === '/api/game/start') {
-      const startQuestion = db.questions.find(q => q.id === input.id);
-      if (!startQuestion) return send(res, 404, { error: 'Frågan finns inte.' });
-      if (startQuestion.type === 'music' && (!startQuestion.video || startQuestion.musicQuestions?.length !== 2)) return send(res,409,{error:'Redigera musikfrågan och lägg till MP4-video samt två frågor först.'});
-      db.game = { phase: 'active', questionId: input.id, clueIndex: 0, answers: {}, filmAnswers: {}, musicAnswers: {}, closestAnswers: {}, closestStage: 0, closestEndsAt: 0, closestScored: false, brakes: {}, awards: {}, round: g.round + 1 };
-      db.tv.mode = 'game';
-      if (!db.played.includes(input.id)) db.played.push(input.id);
+      if (!db.questions.some(q => q.id === input.id)) return send(res, 404, { error: 'Frågan finns inte.' });
+      const error = startQuestion(input.id); if (error) return send(res, 409, { error });
     } else if (p === '/api/game/next') {
       if (g.phase !== 'active' || getQuestion()?.type !== 'destination' || g.clueIndex >= 4) return send(res, 409, { error: 'Ingen ytterligare ledtråd.' });
       g.clueIndex++;
@@ -416,10 +482,10 @@ async function handler(req, res) {
     res.writeHead(200, { 'Content-Type': assets[p][1], 'Cache-Control': 'no-store' });
     return fs.createReadStream(path.join(root, 'public', 'assets', assets[p][0])).pipe(res);
   }
-  if (p === '/' || p === '/app.js' || p === '/map.js' || p === '/style.css' || p.startsWith('/view/')) {
+  if (p === '/' || p === '/app.js' || p === '/map.js' || p === '/qr.js' || p === '/style.css' || p.startsWith('/view/')) {
     if (p.startsWith('/view/') && !role) { res.writeHead(302, { Location: '/', 'Cache-Control': 'no-store' }); return res.end(); }
     if (p.startsWith('/view/') && p.split('/')[2] !== role && !(p === '/view/screen' && role === 'host')) return send(res, 403, { error: 'Ingen åtkomst.' });
-    const file = p === '/app.js' ? 'app.js' : p === '/map.js' ? 'map.js' : p === '/style.css' ? 'style.css' : 'index.html';
+    const file = p === '/app.js' ? 'app.js' : p === '/map.js' ? 'map.js' : p === '/qr.js' ? 'qr.js' : p === '/style.css' ? 'style.css' : 'index.html';
     res.writeHead(200, { 'Content-Type': file.endsWith('.js') ? 'text/javascript; charset=utf-8' : file.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     return fs.createReadStream(path.join(root, 'public', file)).pipe(res);
   }
