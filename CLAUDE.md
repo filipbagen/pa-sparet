@@ -26,6 +26,7 @@ npm test         # node --test --test-isolation=none server.test.js client.test.
 - Server listens on `0.0.0.0` so phones/TV on the same Wi-Fi can connect via `http://<LAN-IP>:3000`.
 - `DATA_DIR` env var overrides the `data/` directory (the server tests use a temp dir via this).
 - `server.test.js` starts a real HTTP listener, so it fails with `EPERM` in sandboxes that forbid binding ports; that is an environment limit, not a bug. `client.test.js` runs `public/app.js` in a `node:vm` context with fake `document`/`fetch`, with no browser.
+- The host session can also act as the screen in its own tab (same browser, one cookie): `/view/screen` is allowed for `host`, and `/api/state?view=screen` / `/api/events?view=screen` return `view('screen')` (the SSE stream is registered with role `screen`, so it counts for `screenOnline`). Screen-only media/assets and `tv/status` accept `host` too (`seesScreen()`). The client detects this as `asScreen`; its exit button closes the tab instead of logging out. When run in a TTY, `npm start` listens for keys: O opens the host page, N opens `/view/screen`, Q quits.
 - Login: users type only an access code (`data/codes.json`; defaults include `ledare`, `förstaklass`, `dressin`, `x2000`, `mälartåg`, `loket`, `storbild`); the code decides the role. All role codes must be distinct and non-empty or the server refuses to boot. Inactive teams cannot log in. Sessions are in-memory, so restarting logs everyone out.
 
 ## Structure

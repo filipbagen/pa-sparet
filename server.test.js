@@ -449,3 +449,24 @@ test('gamla följdfrågor flyttas till Resefilm 1 när servern startar', () => {
     assert.deepEqual(q.films[2].questions.map(x=>x.question),['','']);
   } finally { fs.rmSync(dir,{recursive:true,force:true}); }
 });
+
+test('spelledaren kan öppna storbilden i en egen flik med samma inloggning', async () => {
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const request = async (p, cookie, data) => fetch(base + p, {method:data ? 'POST' : 'GET', redirect:'manual', headers:{...(cookie ? {Cookie:cookie} : {}), ...(data ? {'Content-Type':'application/json'} : {})}, body:data ? JSON.stringify(data) : undefined});
+  try {
+    const host = (await request('/api/login', null, {code:codes.host})).headers.get('set-cookie').split(';')[0];
+    const dressin = (await request('/api/login', null, {code:codes.dressin})).headers.get('set-cookie').split(';')[0];
+    assert.equal((await request('/view/screen', host)).status,200);
+    assert.equal((await request('/view/screen')).status,302);
+    assert.equal((await request('/view/screen', dressin)).status,403);
+    const asScreen = await (await request('/api/state?view=screen', host)).json();
+    assert.equal(asScreen.role,'screen');
+    assert.equal(Object.hasOwn(asScreen,'questions'),false);
+    assert.equal((await (await request('/api/state?view=screen', dressin)).json()).role,'dressin');
+    assert.equal((await request('/assets/resmal-loop.mp3', host)).status,200);
+    assert.equal((await request('/assets/resmal-loop.mp3', dressin)).status,403);
+    assert.equal((await request('/api/tv/status', host, {audioReady:true})).status,200);
+    assert.equal((await (await request('/api/state', host)).json()).tvStatus.audioReady,true);
+  } finally { await new Promise(resolve => server.close(resolve)); }
+});

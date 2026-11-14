@@ -11,6 +11,16 @@ En laglek för spelledare, storbild och upp till fem lag (Första klass, Dressin
 5. Ange enbart åtkomstkoden. Servern väljer rätt vy automatiskt (`ledare`, `förstaklass`, `dressin`, `x2000`, `mälartåg`, `loket`, `storbild`). Bara aktiva lag kan logga in.
 6. Logga in på respektive enhet med dess kod. Varje enhet får en egen inloggning. Koderna finns i `data/codes.json`.
 
+### Storbilden på samma dator som spelledaren
+
+Spelledaren och storbilden kan köras i samma webbläsare med samma inloggning:
+
+1. Kör `npm start` och logga in med `ledare` (tryck **O** i terminalen för att öppna sidan).
+2. Tryck **N** i terminalen, eller klicka **Öppna storbild** (kortkommando **N**) i spelledarvyn. Storbilden öppnas i en ny flik.
+3. Dra fliken till TV:n, gör den till helskärm och klicka **Aktivera ljud** en gång.
+
+Statusen uppe till höger i spelledarvyn blir då grön (**TV redo**). Knappen **Stäng storbild** stänger bara TV-fliken och loggar inte ut spelledaren. Koden `storbild` behövs bara om storbilden körs på en annan enhet. Tryck **Q** i terminalen för att stoppa servern.
+
 Inga `npm install`-steg behövs; appen använder bara Node.js inbyggda moduler.
 
 ## Anslut andra enheter på samma nätverk
@@ -51,7 +61,7 @@ Kortkommandon i Show (gäller inte när du skriver i ett fält):
 
 **Poäng med ett tryck.** Bredvid varje lags svar finns knappar: för resmålet **✓ Rätt +8** (poängnivån där laget låste svaret) eller **✗ Fel**, för en resefilm **0 rätt / 1 rätt · +1 / 2 rätt · +3** och för en musikfråga **0 / 1 / 2 rätt** (1 poäng per rätt). Ett nytt tryck på ett annat alternativ rättar poängen, och ett nytt tryck på det markerade alternativet ångrar det. Närmast vinner delar fortfarande ut poäng automatiskt.
 
-**Storbilden.** Under förhandsvisningen väljer spelledaren vad TV:n visar: **Spel** (vanligt läge), **Ställning** (lagens poäng, sorterade) eller **Svart skärm** (bara logotypen, t.ex. i en paus). Musik och video pausas i Ställning och Svart skärm och fortsätter där de var när du går tillbaka till Spel. När en video visas finns **▶ Spela / ⏸ Pausa / ⟲ Från början** och en tidslinje. Statusen uppe till höger visar om storbilden är ansluten och om ljudet är aktiverat; är den röd behöver någon klicka **Aktivera ljud** på TV-datorn.
+**Storbilden.** Under förhandsvisningen väljer spelledaren vad TV:n visar: **Spel** (vanligt läge), **Ställning** (lagens poäng, sorterade) eller **Svart skärm** (bara logotypen, t.ex. i en paus). Musik och video pausas i Ställning och Svart skärm och fortsätter där de var när du går tillbaka till Spel. När en video visas finns **▶ Spela / ⏸ Pausa / ⟲ Från början** och en tidslinje. Statusen uppe till höger visar om storbilden är öppen och om ljudet är aktiverat. **TV frånkopplad** betyder att ingen storbild är öppen (klicka på statusen eller tryck N); **TV ljud av** betyder att någon behöver klicka **Aktivera ljud** på TV-fliken.
 
 ### Resmål och resefilm
 

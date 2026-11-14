@@ -2,7 +2,7 @@
 'use strict';
 const app = document.querySelector('#app');
 let state = null, editing = null, brakeOpen = false, editingPin = null, editingViewport = null, draftPin = null, closestDeadline = 0;
-let hostTab = 'show', hostFocus = '', stepPending = false, videoSeq = null, lastReport = 0, videoMemory = null, lastHadVideo = null;
+let asScreen = false, hostTab = 'show', hostFocus = '', stepPending = false, videoSeq = null, lastReport = 0, videoMemory = null, lastHadVideo = null;
 let brakePending = false, audioContext = null, audioReady = false, audioLoading = false, audioError = '', audioNextTime = 0, destinationSource = null, destinationRound = null, destinationPlaybackRound = null, destinationOffset = 0, destinationStartedAt = 0;
 const soundBuffers = {}, seenBrakes = new Set();
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -23,8 +23,9 @@ function render() {
   document.body.className = state.theme || state.role;
   const oldVideo = document.querySelector('#musicVideo');
   if (oldVideo?.getAttribute) videoMemory = { src: oldVideo.getAttribute('src'), time: oldVideo.currentTime, paused: oldVideo.paused };
-  app.innerHTML = (state.role === 'host' ? host() : state.role === 'screen' ? screen() : `<div class="team-score" aria-live="polite">Lagets poäng <strong>${state.score ?? 0}</strong></div>` + team()) + '<button class="exit-button" id="logout">Avsluta</button>';
-  document.querySelector('#logout').onclick = async () => { await api('logout', {}); location.href = '/'; };
+  app.innerHTML = (state.role === 'host' ? host() : state.role === 'screen' ? screen() : `<div class="team-score" aria-live="polite">Lagets poäng <strong>${state.score ?? 0}</strong></div>` + team()) + `<button class="exit-button" id="logout">${asScreen ? 'Stäng storbild' : 'Avsluta'}</button>`;
+  // Storbilden som spelledaren öppnat delar inloggning med spelledaren: stäng fliken i stället för att logga ut.
+  document.querySelector('#logout').onclick = async () => { if (asScreen) { window.close(); return; } await api('logout', {}); location.href = '/'; };
   if (state.role === 'host') bindHost();
   if (state.teams?.some(t => t.id === state.role)) bindTeam();
   if (state.role === 'screen') document.querySelector('#enableSound')?.addEventListener('click', enableSound);
@@ -118,8 +119,8 @@ async function runStep(step) { if (!step || step.disabled || stepPending) return
 const scoreChips = () => activeTeamList().map(t => `<span class="cr-chip" style="--team:${esc(t.color)}"><i></i>${esc(t.short)}<b>${state.scores?.[t.id] ?? 0}</b></span>`).join('');
 function tvPill() {
   const on = state.screenOnline > 0, mode = state.tv?.mode;
-  const warn = !on ? 'Storbilden är inte ansluten. Logga in med storbildskoden på TV-datorn.' : !state.tvStatus?.audioReady ? 'Ljudet är av. Klicka på Aktivera ljud på storbilden.' : '';
-  return `<span class="cr-pill ${warn ? 'warn' : 'ok'}" title="${esc(warn || 'Storbilden är ansluten och ljudet är på.')}"><i></i>TV ${!on ? 'frånkopplad' : warn ? 'ljud av' : 'redo'}${mode && mode !== 'game' ? ' · ' + (mode === 'blank' ? 'svart' : 'ställning') : ''}</span>`;
+  const warn = !on ? 'Storbilden är inte öppen. Klicka för att öppna den i en ny flik (eller tryck N).' : !state.tvStatus?.audioReady ? 'Ljudet är av. Klicka på Aktivera ljud på storbilden.' : '';
+  return `<span class="cr-pill ${warn ? 'warn' : 'ok'}"${!on ? ' data-open-screen role="button" tabindex="0"' : ''} title="${esc(warn || 'Storbilden är ansluten och ljudet är på.')}"><i></i>TV ${!on ? 'frånkopplad' : warn ? 'ljud av' : 'redo'}${mode && mode !== 'game' ? ' · ' + (mode === 'blank' ? 'svart' : 'ställning') : ''}</span>`;
 }
 const videoPct = () => { const s = state.tvStatus; return s?.duration ? Math.min(100, s.time / s.duration * 100) : 0; };
 const videoText = () => { const s = state.tvStatus; return !s?.video ? 'Väntar på videon…' : s.ended ? 'Videon är slut' : `${s.playing ? 'Spelar' : 'Pausad'} ${fmtTime(s.time)} / ${fmtTime(s.duration)}`; };
@@ -194,7 +195,7 @@ function teamCards() {
 function tvPanel() {
   const s = state.screenView || {}, mode = state.tv?.mode || 'game', st = state.tvStatus;
   const video = mode === 'game' && !!s.video;
-  return `<section class="cr-panel cr-tv"><h2>Storbild</h2><div class="cr-preview" id="tvPreview"><div class="cr-preview-inner screen">${screen(s, true)}</div></div><div class="cr-seg">${[['game','Spel',''],['scoreboard','Ställning','S'],['blank','Svart skärm','B']].map(([m,l,k]) => `<button data-tv="${m}" class="${mode === m ? 'on' : ''}">${l}${k ? ` <kbd>${k}</kbd>` : ''}</button>`).join('')}</div>${video ? `<div class="cr-video"><button id="videoToggle" data-video="${st?.playing ? 'pause' : 'play'}">${st?.playing ? '⏸ Pausa' : '▶ Spela'} <kbd>P</kbd></button><button data-video="restart" class="ghost">⟲ Från början</button><span id="tvStatus" class="cr-vtime">${videoText()}</span></div><div class="cr-bar"><i id="tvBar" style="width:${videoPct()}%"></i></div>` : ''}</section>`;
+  return `<section class="cr-panel cr-tv"><div class="cr-panel-head"><h2>Storbild</h2><button class="ghost small" data-open-screen>${state.screenOnline > 0 ? 'Öppna igen' : 'Öppna storbild'} <kbd>N</kbd></button></div><div class="cr-preview" id="tvPreview"><div class="cr-preview-inner screen">${screen(s, true)}</div></div><div class="cr-seg">${[['game','Spel',''],['scoreboard','Ställning','S'],['blank','Svart skärm','B']].map(([m,l,k]) => `<button data-tv="${m}" class="${mode === m ? 'on' : ''}">${l}${k ? ` <kbd>${k}</kbd>` : ''}</button>`).join('')}</div>${video ? `<div class="cr-video"><button id="videoToggle" data-video="${st?.playing ? 'pause' : 'play'}">${st?.playing ? '⏸ Pausa' : '▶ Spela'} <kbd>P</kbd></button><button data-video="restart" class="ghost">⟲ Från början</button><span id="tvStatus" class="cr-vtime">${videoText()}</span></div><div class="cr-bar"><i id="tvBar" style="width:${videoPct()}%"></i></div>` : ''}</section>`;
 }
 // Uppdaterar bara TV-statusen (skickas ca 1 gång/s när video spelas) utan att rita om hela vyn.
 function patchTv() {
@@ -320,6 +321,8 @@ async function uploadVideo(file) {
   const result = await response.json(); if (!response.ok) throw Error(result.error || 'Videon kunde inte laddas upp.');
   return result.video;
 }
+// Storbilden öppnas i en egen flik/ett eget fönster med spelledarens inloggning; dra den till TV:n.
+function openScreen() { const w = window.open('/view/screen', 'storbild'); if (!w) alert('Webbläsaren blockerade fliken. Tillåt popup-fönster för sidan eller tryck N i terminalen.'); }
 function scalePreview() { const box = document.querySelector('#tvPreview'); if (box) box.style.setProperty('--s', box.clientWidth / 1280); }
 function bindHost() {
   const on = (sel, fn) => document.querySelector(sel)?.addEventListener('click', fn);
@@ -390,9 +393,11 @@ document.addEventListener('keydown', e => {
   if (k === ' ' || k === 'arrowright') { e.preventDefault(); runStep(nextStep()); }
   else if (k === 'r' && q?.type === 'destination' && g.phase === 'active') action('game/reveal');
   else if (k === 's' || k === 'b') { const mode = k === 's' ? 'scoreboard' : 'blank'; action('tv', { mode: state.tv?.mode === mode ? 'game' : mode }); }
+  else if (k === 'n') openScreen();
   else if (k === 'p' && state.screenView?.video && state.tv?.mode === 'game') action('tv/video', { action: state.tvStatus?.playing ? 'pause' : 'play' });
 });
 if (typeof window !== 'undefined') window.addEventListener?.('resize', scalePreview);
+document.addEventListener('click', e => { if (state?.role === 'host' && e.target?.closest?.('[data-open-screen]')) openScreen(); });
 function bindTeam() {
 
   document.querySelector('#musicAnswerForm')?.addEventListener('submit', async e => { e.preventDefault(); const answer = new FormData(e.target).get('answer'); await action('music-answer', {answer, round:state.round}); });
@@ -423,9 +428,11 @@ setInterval(() => { const left = Math.max(0, Math.ceil((closestDeadline - perfor
     const me = await api('me');
     if (!me.role) return;
     const requested = location.pathname.split('/')[2];
-    if (location.pathname.startsWith('/view/') && requested !== me.role) { app.textContent = 'Ingen åtkomst.'; return; }
-    state = await api('state'); trackDeadline(state); handleBrakes(state, true); syncDestinationMusic(state); render(); applyVideoCmd();
-    const events = new EventSource('/api/events');
+    asScreen = me.role === 'host' && requested === 'screen';
+    if (location.pathname.startsWith('/view/') && requested !== me.role && !asScreen) { app.textContent = 'Ingen åtkomst.'; return; }
+    const as = asScreen ? '?view=screen' : '';
+    state = await api('state' + as); trackDeadline(state); handleBrakes(state, true); syncDestinationMusic(state); render(); applyVideoCmd();
+    const events = new EventSource('/api/events' + as);
     events.onmessage = e => {
       const next = JSON.parse(e.data);
       if (next.role === 'host') {

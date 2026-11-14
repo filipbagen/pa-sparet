@@ -147,6 +147,7 @@ function view(role) {
   if (mine) return { ...base, type: q.type, locked: mine, answer: g.phase === 'revealed' ? q.answer : undefined };
   return { ...base, type: q.type, points: visible.points, pulled: !!g.brakes?.[role], brakeBlocked:q.type==='destination' && !!Object.keys(g.brakes||{}).length && !g.brakes?.[role], locked: null, answer: g.phase === 'revealed' ? q.answer : undefined };
 }
+const seesScreen = role => role === 'screen' || role === 'host';
 function send(res, status, body, headers = {}) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers });
   res.end(JSON.stringify(body));
@@ -214,7 +215,7 @@ async function handler(req, res) {
   }
   if (p.startsWith('/api/image/') && req.method === 'GET') {
     const file=p.slice('/api/image/'.length), q=getQuestion();
-    if (role!=='screen' || q?.type!=='closest' || q.image!==file || db.game.phase!=='active' || !/^[a-f0-9-]{36}\.(png|jpg|webp)$/.test(file)) return send(res,403,{error:'Ingen åtkomst.'});
+    if (!seesScreen(role) || q?.type!=='closest' || q.image!==file || db.game.phase!=='active' || !/^[a-f0-9-]{36}\.(png|jpg|webp)$/.test(file)) return send(res,403,{error:'Ingen åtkomst.'});
     const target=path.join(mediaDir,file);
     if (!fs.existsSync(target)) return send(res,404,{error:'Bilden finns inte.'});
     const mime=file.endsWith('.png')?'image/png':file.endsWith('.jpg')?'image/jpeg':'image/webp';
@@ -239,7 +240,7 @@ async function handler(req, res) {
     const vq = getQuestion(), vg = db.game;
     const allowed = vq?.type === 'music' ? vg.phase === 'active' && vq.video === file
       : vq?.type === 'destination' && vg.phase === 'revealed' && vg.filmStage === 'video' && vq.films?.[vg.filmIndex]?.video === file;
-    if (role !== 'screen' || !allowed || !/^[a-f0-9-]{36}\.mp4$/.test(file)) return send(res,403,{error:'Ingen åtkomst.'});
+    if (!seesScreen(role) || !allowed || !/^[a-f0-9-]{36}\.mp4$/.test(file)) return send(res,403,{error:'Ingen åtkomst.'});
     const target = path.join(mediaDir,file);
     if (!fs.existsSync(target)) return send(res,404,{error:'Videon finns inte.'});
     const size = fs.statSync(target).size;
@@ -252,13 +253,15 @@ async function handler(req, res) {
   }
   if (p.startsWith('/api/')) {
     if (!role) return send(res, 401, { error: 'Logga in.' });
-    if (p === '/api/state' && req.method === 'GET') return send(res, 200, view(role));
+    // Spelledaren kan öppna storbilden i en egen flik med samma inloggning (?view=screen).
+    const viewRole = role === 'host' && url.searchParams.get('view') === 'screen' ? 'screen' : role;
+    if (p === '/api/state' && req.method === 'GET') return send(res, 200, view(viewRole));
     if (p === '/api/events' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
-      res.write(`data: ${JSON.stringify(view(role))}\n\n`);
-      const stream = { res, role }; streams.add(stream);
-      if (role === 'screen') broadcast('host');
-      req.on('close', () => { streams.delete(stream); if (role === 'screen') { if (!screenOnline()) tvStatus = null; broadcast('host'); } }); return;
+      res.write(`data: ${JSON.stringify(view(viewRole))}\n\n`);
+      const stream = { res, role: viewRole }; streams.add(stream);
+      if (viewRole === 'screen') broadcast('host');
+      req.on('close', () => { streams.delete(stream); if (viewRole === 'screen') { if (!screenOnline()) tvStatus = null; broadcast('host'); } }); return;
     }
     if (req.method !== 'POST' || req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) return send(res, 403, { error: 'Ingen åtkomst.' });
     const input = await body(req);
@@ -291,7 +294,7 @@ async function handler(req, res) {
       g.filmAnswers[index][role] = answers;
       save(); broadcast(); return send(res, 200, view(role));
     }
-    if (p === '/api/tv/status' && role === 'screen') {
+    if (p === '/api/tv/status' && seesScreen(role)) {
       const num = v => Number.isFinite(Number(v)) ? Math.max(0, Math.round(Number(v) * 10) / 10) : 0;
       tvStatus = { video: !!input.video, playing: !!input.playing, ended: !!input.ended, time: num(input.time), duration: num(input.duration), audioReady: !!input.audioReady };
       broadcast('host'); return send(res, 200, {});
@@ -409,12 +412,13 @@ async function handler(req, res) {
   }
   const assets = { '/assets/nodbroms.png': ['nodbroms.png', 'image/png'], '/assets/dressin.ogg': ['dressin.ogg', 'audio/ogg'], '/assets/forstaklass.ogg': ['forstaklass.ogg', 'audio/ogg'], '/assets/resmal-loop.mp3': ['resmal-loop.mp3', 'audio/mpeg'], '/assets/land.geojson': ['land.geojson', 'application/geo+json'] };
   if (assets[p]) {
-    if ((p.endsWith('.ogg') || p.endsWith('.mp3')) && role !== 'screen') return send(res, role ? 403 : 401, { error: 'Ingen åtkomst.' });
+    if ((p.endsWith('.ogg') || p.endsWith('.mp3')) && !seesScreen(role)) return send(res, role ? 403 : 401, { error: 'Ingen åtkomst.' });
     res.writeHead(200, { 'Content-Type': assets[p][1], 'Cache-Control': 'no-store' });
     return fs.createReadStream(path.join(root, 'public', 'assets', assets[p][0])).pipe(res);
   }
   if (p === '/' || p === '/app.js' || p === '/map.js' || p === '/style.css' || p.startsWith('/view/')) {
-    if (p.startsWith('/view/') && (!role || p.split('/')[2] !== role)) return send(res, role ? 403 : 401, { error: 'Ingen åtkomst.' });
+    if (p.startsWith('/view/') && !role) { res.writeHead(302, { Location: '/', 'Cache-Control': 'no-store' }); return res.end(); }
+    if (p.startsWith('/view/') && p.split('/')[2] !== role && !(p === '/view/screen' && role === 'host')) return send(res, 403, { error: 'Ingen åtkomst.' });
     const file = p === '/app.js' ? 'app.js' : p === '/map.js' ? 'map.js' : p === '/style.css' ? 'style.css' : 'index.html';
     res.writeHead(200, { 'Content-Type': file.endsWith('.js') ? 'text/javascript; charset=utf-8' : file.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     return fs.createReadStream(path.join(root, 'public', file)).pipe(res);
@@ -424,6 +428,19 @@ async function handler(req, res) {
 const server = http.createServer((req, res) => Promise.resolve(handler(req, res)).catch(e => { if (!res.headersSent) send(res, 400, { error: e.message }); }));
 if (require.main === module) {
   const port = Number(process.env.PORT || 3000);
-  server.listen(port, '0.0.0.0', () => console.log(`Öppna http://localhost:${port} | Koder: ${codeFile}`));
+  const openUrl = target => { const { spawn } = require('node:child_process'); const [cmd, args] = process.platform === 'darwin' ? ['open', [target]] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '', target]] : ['xdg-open', [target]]; spawn(cmd, args, { stdio: 'ignore', detached: true }).on('error', () => console.log('Kunde inte öppna webbläsaren. Öppna ' + target + ' själv.')).unref(); };
+  server.listen(port, '0.0.0.0', () => {
+    console.log(`Öppna http://localhost:${port} | Koder: ${codeFile}`);
+    if (!process.stdin.isTTY) return;
+    // Kortkommandon i terminalen: O = spelledarvyn, N = storbilden i en ny flik (samma inloggning som spelledaren).
+    console.log('Tryck O för att öppna spelledarvyn, N för att öppna storbilden i en ny flik, Q för att avsluta.');
+    process.stdin.setRawMode(true); process.stdin.resume();
+    process.stdin.on('data', key => {
+      const k = String(key).toLowerCase();
+      if (k === '\u0003' || k === 'q') process.exit(0);
+      if (k === 'o') openUrl(`http://localhost:${port}/`);
+      if (k === 'n') { openUrl(`http://localhost:${port}/view/screen`); console.log('Storbilden öppnas. Dra fliken till TV:n, gör den till helskärm och klicka Aktivera ljud.'); }
+    });
+  });
 }
 module.exports = { server };
