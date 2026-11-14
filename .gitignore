@@ -2,3 +2,4 @@ node_modules/
 data/sessions.json
 data/sessions.json.tmp
 .DS_Store
+public/assets/lobby.mp3

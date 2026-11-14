@@ -467,6 +467,8 @@ test('spelledaren kan öppna storbilden i en egen flik med samma inloggning', as
     assert.equal((await (await request('/api/state?view=screen', dressin)).json()).role,'dressin');
     assert.equal((await request('/assets/resmal-loop.mp3', host)).status,200);
     assert.equal((await request('/assets/resmal-loop.mp3', dressin)).status,403);
+    assert.equal((await request('/assets/lobby.mp3', host)).status,200);
+    assert.equal((await request('/assets/lobby.mp3', dressin)).status,403);
     assert.equal((await request('/api/tv/status', host, {audioReady:true})).status,200);
     assert.equal((await (await request('/api/state', host)).json()).tvStatus.audioReady,true);
   } finally { await new Promise(resolve => server.close(resolve)); }

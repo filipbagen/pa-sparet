@@ -161,3 +161,22 @@ body.guest{background:radial-gradient(circle at 50% 0,#1d3553,#0b1624 70%);color
 .tv-qr{width:100%;max-width:min(100%,58vh);justify-self:center}
 .forsta button.secondary:not(.exit-button){color:#fff8e4}.dressin button.secondary:not(.exit-button){color:#fff}
 body.guest{padding:6vh 1rem 2rem}body.guest .join{margin:0 auto}
+/* Telefoner: sidan fyller skärmen och går inte att scrolla, studsa eller dubbeltryck-zooma */
+html:has(body.phone){height:100%;overflow:hidden;overscroll-behavior:none}
+body.phone{position:fixed;inset:0;overflow:hidden;overscroll-behavior:none;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;display:flex;flex-direction:column;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+body.phone input,body.phone textarea{-webkit-user-select:text;user-select:text;font-size:16px}
+body.phone #app{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+body.phone .team-score{flex:none;width:100%}
+body.phone .hero,body.phone .join,body.phone .login{flex:0 1 auto;min-height:0;max-height:100%;margin:.75rem auto;width:calc(100% - 1.5rem);overflow-y:auto;overscroll-behavior:contain;padding-bottom:1.5rem}
+body.guest.phone{padding-top:max(4vh,env(safe-area-inset-top))}
+body.phone .layout,body.phone .hero{padding-bottom:1.5rem}
+body.phone .exit-button{bottom:max(.75rem,env(safe-area-inset-bottom));right:.75rem}
+/* Närmast vinner på telefonen: kartan täcker hela skärmen under nedräkningen */
+body.fullmap .team-score,body.fullmap .exit-button{display:none}
+.closest-full{position:fixed;inset:0;z-index:20;background:#a8d2e2}
+.closest-full .map-wrap{position:absolute;inset:0;width:100%;height:100%;aspect-ratio:auto;margin:0;border:0;border-radius:0;max-height:none}
+.closest-hud{position:absolute;top:max(.75rem,env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:5;display:flex;align-items:center;gap:.75rem;width:max-content;max-width:calc(100% - 6rem);padding:.45rem .9rem .45rem .55rem;border-radius:999px;background:#0b1624dd;color:#fff;box-shadow:0 6px 20px #0006;pointer-events:none}
+.closest-hud .countdown{margin:0;min-width:2.6rem;height:2.6rem;display:grid;place-items:center;border-radius:50%;background:#ffcc69;color:#162a3c;font-size:1.5rem}
+.closest-hud p{margin:0;font-size:.85rem;font-weight:700;line-height:1.2}
+.closest-full .local-map-controls{top:auto;bottom:max(1rem,env(safe-area-inset-bottom));right:1rem}.closest-full .local-map-controls button{width:48px;height:48px;font-size:1.7rem}
+.closest-full .real-map-attribution{bottom:auto;top:0;right:0;opacity:.6}

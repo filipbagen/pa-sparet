@@ -2,7 +2,7 @@
 'use strict';
 const app = document.querySelector('#app');
 let state = null, editing = null, brakeOpen = false, editingPin = null, editingViewport = null, draftPin = null, closestDeadline = 0;
-let asScreen = false, localHost = false, showLogin = false, hostTab = 'show', hostFocus = '', stepPending = false, videoSeq = null, lastReport = 0, videoMemory = null, lastHadVideo = null;
+let lobbySource = null, asScreen = false, localHost = false, showLogin = false, hostTab = 'show', hostFocus = '', stepPending = false, videoSeq = null, lastReport = 0, videoMemory = null, lastHadVideo = null;
 let brakePending = false, audioContext = null, audioReady = false, audioLoading = false, audioError = '', audioNextTime = 0, destinationSource = null, destinationRound = null, destinationPlaybackRound = null, destinationOffset = 0, destinationStartedAt = 0;
 const soundBuffers = {}, seenBrakes = new Set();
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -20,11 +20,12 @@ const trackDeadline = data => { if (data?.remainingMs > 0) closestDeadline = per
 async function action(path, data = {}) { try { state = await api(path, data); trackDeadline(state); render(); } catch (e) { alert(e.message); } }
 function render() {
   if (!state?.role) {
-    if (state?.guest) document.body.className = 'guest';
+    document.body.className = state?.guest ? 'guest phone' : 'phone';
     app.innerHTML = state?.guest && !showLogin ? joinView() : `<section class="login card"><h1>På resande fot</h1><p>Ange din kod för att komma till rätt vy.</p><form id="login"><label>Åtkomstkod<input name="code" type="password" required autocomplete="current-password" autocapitalize="none" spellcheck="false"></label><button>Logga in</button></form>${state?.guest ? '<p class="hint"><a href="#" id="backToTeams">Tillbaka till lagvalet</a></p>' : ''}</section>`;
     bindGuest(); return;
   }
-  document.body.className = state.theme || state.role;
+  const isTeamView = !!state.teams?.some(t => t.id === state.role);
+  document.body.className = (state.theme || state.role) + (isTeamView ? ' phone' : '') + (isTeamView && state.type === 'closest' && state.stage === 1 ? ' fullmap' : '');
   const oldVideo = document.querySelector('#musicVideo');
   if (oldVideo?.getAttribute) videoMemory = { src: oldVideo.getAttribute('src'), time: oldVideo.currentTime, paused: oldVideo.paused };
   app.innerHTML = (state.role === 'host' ? host() : state.role === 'screen' ? screen() : `<div class="team-score" aria-live="polite">Lagets poäng <strong>${state.score ?? 0}</strong></div>` + team()) + (localHost && state.role === 'host' ? '' : `<button class="exit-button" id="logout">${asScreen ? 'Stäng storbild' : 'Avsluta'}</button>`);
@@ -101,7 +102,9 @@ function mountMaps() {
   if (teamMap) {
     if (state.stage===1 && !draftPin && !state.pin) { const v=state.viewport; draftPin={lat:+((v.north+v.south)/2).toFixed(5),lon:+((v.east+v.west)/2).toFixed(5)}; pushPin(draftPin); }
     const pin=state.stage===1?(draftPin||state.pin):state.pin;
-    window.GameMap.draw(teamMap,{scope:state.scope,viewport:state.viewport,locked:true,key:'team:'+state.round,pins:pin?{mine:{...pin}}:{},correct:state.correct,onDrag:state.stage===1?(point,final)=>{ if (performance.now()>closestDeadline) return; draftPin={...point}; pushPin(draftPin); }:null});
+    // Under nedräkningen sitter nålen fast i mitten; laget flyttar och zoomar kartan under den.
+    if (state.stage===1) window.GameMap.draw(teamMap,{scope:state.scope,viewport:state.viewport,locked:true,key:'team:'+state.round,centerPin:true,start:pin,pinColor:teamMeta(state.role)?.color||'#d83027',onCenter:point=>{ if (performance.now()>closestDeadline || (draftPin && draftPin.lat===point.lat && draftPin.lon===point.lon)) return; draftPin={...point}; pushPin(draftPin); }});
+    else window.GameMap.draw(teamMap,{scope:state.scope,viewport:state.viewport,locked:true,key:'team:'+state.round,pins:pin?{mine:{...pin}}:{},correct:state.correct});
   }
   const screenMap=document.querySelector('#screenMap');
   if (screenMap) window.GameMap.draw(screenMap,{scope:state.scope,viewport:state.viewport,locked:true,key:'screen:'+state.round,pins:state.pins||{},correct:state.correct});
@@ -264,6 +267,7 @@ function editorPanel() {
 function team() {
   if (state.lobby) return `<section class="hero card"><div class="eyebrow">Ni är ombord</div><h1>${esc(teamMeta(state.role)?.short || state.label)}</h1><p>Titta på storbilden. Resan börjar när spelledaren trycker kör.</p><button id="leaveTeam" class="secondary">Byt lag</button></section>`;
   if (state.phase === 'waiting') return `<section class="hero card"><div class="eyebrow">Redo för avfärd</div><h1>Väntar på nästa fråga</h1><p>Spelledaren startar snart.</p></section>`;
+  if (state.type === 'closest' && state.stage === 1) return `<section class="closest-full"><div id="teamMap" class="map-wrap"></div><div class="closest-hud"><div id="countdown" class="countdown"></div><p>Flytta och zooma kartan så att nålen hamnar på rätt plats</p></div></section>`;
   if (state.type === 'closest') return `<section class="hero card closest-team"><div class="eyebrow">Närmast vinner</div><h1>${state.stage===0?'Gör er redo':state.stage===1?'Placera er nål!':state.stage===2?'Tiden är ute':'Resultat'}</h1>${state.stage===1?'<div id="countdown" class="countdown"></div>':''}<div id="teamMap" class="map-wrap"></div>${state.stage===0?'<p>Titta på storbilden. Ledtråden visas där. Kartan öppnas när spelledaren startar tiden.</p>':state.stage===1?'<p>Dra nålen med fingret dit ni tror att platsen ligger. Ni kan flytta den tills tiden går ut.</p>':state.stage===2?'<p>'+(state.pin?'Er nål är låst.':'Ni hann inte sätta någon nål.')+'</p>':''}${state.correct ? resultText(state.result) : ''}</section>`;
   if (state.type === 'music') return `<section class="hero card"><h1>Lyssna och njut</h1></section>`;
   if (state.type === 'music-question') return `<section class="hero card"><div class="eyebrow">Musikfrågor</div><ol class="music-questions">${state.questions.map(question => `<li>${esc(question)}</li>`).join('')}</ol>${state.locked ? `<div class="locked"><strong>Ert svar är låst</strong><p class="preserve-lines">${esc(state.locked)}</p></div>` : state.answers ? '' : `<form id="musicAnswerForm"><label>Skriv svaren på alla frågor i samma ruta<textarea name="answer" required maxlength="2000" rows="6"></textarea></label><button>Lås svar</button></form>`}${state.answers ? `<div class="reveal"><strong>Rätta svar</strong><ol>${state.answers.map(answer => `<li>${esc(answer)}</li>`).join('')}</ol></div>` : ''}</section>`;
@@ -310,6 +314,8 @@ async function enableSound() {
       if (!response.ok) throw Error('Ljudfilen kunde inte laddas.');
       soundBuffers[key] = await audioContext.decodeAudioData(await response.arrayBuffer());
     }));
+    // Lobbymusiken är valfri: saknas filen fungerar resten av ljudet ändå.
+    try { const lobby = await fetch('/assets/lobby.mp3'); if (lobby.ok) soundBuffers.lobby = await audioContext.decodeAudioData(await lobby.arrayBuffer()); } catch {}
     audioReady = true;
     syncDestinationMusic(state);
   } catch (error) { audioError = 'Ljudet kunde inte aktiveras. Försök igen.'; }
@@ -331,6 +337,13 @@ function syncDestinationMusic(next) {
     destinationSource.connect(audioContext.destination);
     destinationSource.start(0,destinationOffset); destinationStartedAt=audioContext.currentTime-destinationOffset;destinationRound = next.round;
   }
+  syncLobbyMusic(next);
+}
+// Vinjetten loopar på storbilden så länge lobbyn är öppen (inte vid svart skärm) och tystnar när spelet startar.
+function syncLobbyMusic(next) {
+  const shouldPlay = next.lobby && !next.overlay && audioReady && soundBuffers.lobby && audioContext?.state === 'running';
+  if (lobbySource && !shouldPlay) { lobbySource.stop(); lobbySource.disconnect(); lobbySource = null; }
+  if (shouldPlay && !lobbySource) { lobbySource = audioContext.createBufferSource(); lobbySource.buffer = soundBuffers.lobby; lobbySource.loop = true; lobbySource.connect(audioContext.destination); lobbySource.start(0); }
 }
 function handleBrakes(next, initial = false) {
   if (next.role !== 'screen') return;
@@ -433,6 +446,8 @@ document.addEventListener('keydown', e => {
   else if (k === 'p' && state.screenView?.video && state.tv?.mode === 'game') action('tv/video', { action: state.tvStatus?.playing ? 'pause' : 'play' });
 });
 if (typeof window !== 'undefined') window.addEventListener?.('resize', scalePreview);
+// iOS ignorerar user-scalable i viewport-taggen; stoppa nyp-zoom av själva sidan på telefoner (kartan har egen zoom).
+for (const type of ['gesturestart','gesturechange']) document.addEventListener(type, e => { if (document.body?.classList?.contains('phone')) e.preventDefault(); }, { passive:false });
 document.addEventListener('click', e => { if (state?.role === 'host' && e.target?.closest?.('[data-open-screen]')) openScreen(); });
 function bindTeam() {
   document.querySelector('#leaveTeam')?.addEventListener('click', async () => { try { await api('leave', {}); location.href = '/'; } catch (e) { alert(e.message); } });

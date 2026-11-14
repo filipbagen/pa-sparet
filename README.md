@@ -13,7 +13,7 @@ En laglek för spelledare, storbild och upp till fem lag (Första klass, Dressin
 ### Starta en kväll: lobby och QR-kod
 
 1. Kör `npm start` på spelledarens dator. Tryck **O** för spelledarvyn och **N** för storbilden i en ny flik. Allt som öppnas på den egna datorn (`localhost`) är automatiskt spelledare och storbild, utan kod.
-2. Dra storbildsfliken till TV:n, gör den till helskärm och klicka **Aktivera ljud** en gång.
+2. Dra storbildsfliken till TV:n, gör den till helskärm och klicka **Aktivera ljud** en gång. Då börjar vinjetten (`public/assets/lobby.mp3`) spela i en slinga så länge lobbyn är öppen. Den tystnar vid **Svart skärm** och när spelet startar. Byt låt genom att ersätta filen.
 3. Storbilden visar en **lobby** med en QR-kod och alla fem lag. Lagen ansluter telefonerna till samma Wi-Fi, skannar QR-koden (eller skriver adressen under den) och trycker på sitt lag. Inga lösenord behövs.
 4. Ett lag kan bara väljas av en telefon. Valda lag tänds på storbilden och låses på de andra telefonerna. En telefon kan trycka **Byt lag** så länge lobbyn är öppen.
 5. Tryck **Kör!** (eller mellanslag) i spelledarvyn när minst två lag är ombord. Lagen som är ombord blir lagen i spelet och första ospelade frågan startar direkt.
@@ -23,6 +23,8 @@ Servern startar alltid i lobbyn. Inloggningarna sparas i `data/sessions.json` (s
 Åtkomstkoderna i `data/codes.json` fungerar fortfarande via **Logga in med kod** på startsidan, t.ex. för en storbild på en annan dator. Tryck **Q** i terminalen för att stoppa servern.
 
 Inga `npm install`-steg behövs; appen använder bara Node.js inbyggda moduler.
+
+På telefonerna fyller spelet hela skärmen och sidan går inte att scrolla eller zooma; bara kartan i Närmast vinner kan flyttas och zoomas.
 
 ## Anslut andra enheter på samma nätverk
 
@@ -86,7 +88,7 @@ För en musikfråga skriver spelledaren en titel, laddar upp en MP4-fil (högst 
 
 Spelledaren väljer **Ny Närmast vinner**, skriver en titel och en ledtråd som text och/eller PNG-, JPG- eller WebP-bild (högst 20 MB), och anger hur många poäng närmaste laget får (standard 10). Zooma och flytta kartan direkt till precis det utsnitt lagen ska få se och klicka på rätt plats inom utsnittet. Det synliga kartutsnittet sparas med frågan. Lagen kan zooma in och flytta kartan inom utsnittet, men inte utanför det. Kartan använder Natural Earths riktiga kustlinjer utan ortnamn, platsetiketter eller landgränser. Kartdatan finns lokalt i `public/assets/land.geojson`, så de anslutna enheterna behöver inte internet för kartan.
 
-När frågan startar visas ledtråden (bild och/eller text) på storbilden. Lagens telefoner visar bara kartan och väntar. När spelledaren klickar **Starta 10 sekunder** öppnas kartan och en nedräkning startar på alla skärmar. Nålen ligger alltid på kartan (från start mitt i utsnittet). Lagen drar den med fingret, utan att hålla in, tills tiden är ute och ser bara sin egen nål. Drar man på kartan utanför nålen flyttas kartan. När tiden gått ut visas alla lags nålar på storbilden automatiskt (ett lag som inte hunnit sätta någon nål får ingen nål och kan inte vinna). Spelledaren klickar sedan **Visa rätt plats och resultat**, och då visas rätt plats och en tabell med avståndet från varje lags nål till rätt plats i kilometer. Närmaste laget får poängen automatiskt; vid lika avstånd inom 0,1 km får båda lagen full poäng. Om servern startats om under nedräkningen blir nästa steg-knappen **Visa nålar nu**.
+När frågan startar visas ledtråden (bild och/eller text) på storbilden. Lagens telefoner visar bara kartan och väntar. När spelledaren klickar **Starta 10 sekunder** öppnas kartan och en nedräkning startar på alla skärmar. Under nedräkningen täcker kartan hela telefonskärmen och nålen sitter fast mitt på skärmen. Lagen flyttar och zoomar kartan under nålen (dra med ett finger, nyp för att zooma eller använd + och −) tills nålen pekar på rätt plats. Nålens läge sparas löpande tills tiden är ute, och varje lag ser bara sin egen nål. När tiden gått ut visas alla lags nålar på storbilden automatiskt (ett lag som inte hunnit sätta någon nål får ingen nål och kan inte vinna). Spelledaren klickar sedan **Visa rätt plats och resultat**, och då visas rätt plats och en tabell med avståndet från varje lags nål till rätt plats i kilometer. Närmaste laget får poängen automatiskt; vid lika avstånd inom 0,1 km får båda lagen full poäng. Om servern startats om under nedräkningen blir nästa steg-knappen **Visa nålar nu**.
 
 Storbilden spelar den medföljande filen `public/assets/resmal-loop.mp3` i en slinga från det att spelledaren startar ett resmål. Låten pausas vid bromsning och fortsätter vid nästa ledtråd. Den stoppas när resmålet avslöjas eller en annan fråga startar. Klicka **Aktivera ljud** på storbilden innan spelet börjar; webbläsaren kräver en användarinteraktion innan den kan spela ljud automatiskt.
 

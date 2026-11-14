@@ -274,3 +274,71 @@ test('kartredigeraren läser och skriver sina fält i formuläret, inte i <meta 
   assert.doesNotMatch(source, /querySelector\('\[name="(viewport|answerLat|answerLon)"\]'\)/);
   assert.match(source, /querySelector\('#questionForm \[name="viewport"\]'\)/);
 });
+
+test('storbilden loopar lobbylåten i lobbyn och stänger av den när spelet startar', async () => {
+  const app = { innerHTML: '' }, logout = {}, enableButton = {}, played = [], stopped = [];
+  let events, enable;
+  enableButton.addEventListener = (name, fn) => { enable = fn; };
+  const initial = { role:'screen', label:'Storbild', phase:'waiting', round:1, lobby:true, teams, activeTeams, claimed:[], joinUrl:'http://10.0.0.5:3000/' };
+  const context = {
+    document: { body:{}, querySelector: selector => ({'#app':app,'#logout':logout,'#enableSound':enableButton}[selector] || null), addEventListener() {} },
+    location: { pathname:'/view/screen' },
+    fetch: async url => ({ ok:true, json:async () => url === '/api/me' ? { role:'screen' } : initial, arrayBuffer:async () => url }),
+    EventSource: class { constructor() { events = this; } },
+    AudioContext: class { state = 'running'; currentTime = 0; destination = {}; async resume() {} async decodeAudioData(file) { return { file, duration:30 }; }
+      createBufferSource() { const source = { connect(){}, disconnect(){}, stop(){ stopped.push(source.buffer.file); }, start(){ played.push({ file:source.buffer.file, loop:!!source.loop }); } }; return source; } },
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'public/app.js'),'utf8'), Object.assign(context, browserTimers));
+  await new Promise(resolve => setImmediate(resolve));
+  await enable();
+  assert.deepEqual(played, [{ file:'/assets/lobby.mp3', loop:true }]);
+  events.onmessage({ data:JSON.stringify({ ...initial, claimed:['dressin'] }) });
+  assert.equal(played.length, 1);
+  events.onmessage({ data:JSON.stringify({ ...initial, lobby:true, overlay:'blank' }) });
+  assert.deepEqual(stopped, ['/assets/lobby.mp3']);
+  events.onmessage({ data:JSON.stringify(initial) });
+  assert.equal(played.length, 2);
+  events.onmessage({ data:JSON.stringify({ ...initial, lobby:false, phase:'active', type:'destination', points:10, brakes:[] }) });
+  assert.deepEqual(stopped, ['/assets/lobby.mp3', '/assets/lobby.mp3']);
+  assert.equal(played.at(-1).file, '/assets/resmal-loop.mp3');
+});
+
+test('lagets karta täcker skärmen under nedräkningen och skickar kartans mittpunkt som nål', async () => {
+  const app = { innerHTML:'' }, logout = {}, mapEl = {}, body = {}, draws = [], posts = [];
+  let events, now = 0;
+  const viewport = { west:10, east:20, south:55, north:65 };
+  const initial = { role:'dressin', label:'Lag Dressin', theme:'dressin', phase:'active', round:7, score:3, type:'closest', scope:'world', viewport, stage:1, remainingMs:10000, pin:null, teams, activeTeams };
+  const context = {
+    window: { GameMap: { draw(element, options) { draws.push(options); }, cleanup() {} } },
+    document: { body, querySelector: s => ({'#app':app,'#logout':logout,'#teamMap':app.innerHTML.includes('id="teamMap"') ? mapEl : null}[s] || null), addEventListener() {} },
+    location: { pathname:'/view/dressin' },
+    fetch: async (url, opts) => { if (opts?.method === 'POST') posts.push([url, JSON.parse(opts.body)]); return { ok:true, json:async () => url === '/api/me' ? { role:'dressin' } : initial }; },
+    EventSource: class { constructor() { events = this; } },
+    setInterval() {}, performance: { now: () => now },
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'public/app.js'),'utf8'), context);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(app.innerHTML, /class="closest-full"/);
+  assert.match(app.innerHTML, /class="team-score"/); // finns men döljs med CSS (body.fullmap)
+  assert.match(body.className, /\bphone\b/);
+  assert.match(body.className, /\bfullmap\b/);
+  const opts = draws.at(-1);
+  assert.equal(opts.centerPin, true);
+  assert.equal(opts.pinColor, '#168b53');
+  assert.equal(opts.onDrag, undefined);
+  await new Promise(resolve => setImmediate(resolve));
+  posts.length = 0;
+  opts.onCenter({ lat:58.1, lon:12.3 });
+  opts.onCenter({ lat:58.1, lon:12.3 });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(posts, [['/api/closest-answer', { lat:58.1, lon:12.3, round:7 }]]);
+  now = 20000;
+  opts.onCenter({ lat:60, lon:15 });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(posts.length, 1);
+  events.onmessage({ data:JSON.stringify({ ...initial, stage:2, remainingMs:0, pin:{ lat:58.1, lon:12.3 } }) });
+  assert.doesNotMatch(app.innerHTML, /closest-full/);
+  assert.doesNotMatch(body.className, /fullmap/);
+  assert.equal(draws.at(-1).centerPin, undefined);
+  assert.equal(draws.at(-1).pins.mine.lat, 58.1);
+});

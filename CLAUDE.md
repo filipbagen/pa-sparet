@@ -40,7 +40,7 @@ public/qr.js         dependency-free QR encoder (window.QR.svg/matrix; also requ
 public/app.js        entire frontend: login, all four role views, audio, SSE client
 public/map.js        canvas map for "closest" questions (Mercator, pan/zoom, pins)
 public/style.css     styles
-public/assets/       nodbroms.png, dressin.ogg, forstaklass.ogg, resmal-loop.mp3, land.geojson (Natural Earth coastlines)
+public/assets/       nodbroms.png, dressin.ogg, forstaklass.ogg, resmal-loop.mp3, lobby.mp3 (loops on the screen while the lobby is open, `syncLobbyMusic()`), land.geojson (Natural Earth coastlines)
 data/game.json       questions + live game state + scores (persisted)
 data/codes.json      access codes (auto-created with defaults if missing)
 data/media/          uploaded <uuid>.mp4/.png/.jpg/.webp
@@ -67,6 +67,7 @@ server.test.js / client.test.js
 - Host view ("kontrollrum", dark theme scoped under `.cr`/`body.host`): tabs `hostTab` = `show` (manus/presenter notes, team cards with one-tap award buttons, TV panel with preview + mode/video controls, big next-step button) and `prepare` (question list, editor, teams, manual scores). `nextStep()` is the single source of truth for the next action (button + Space key); keyboard shortcuts Space/→, R, S, B, P are ignored inside inputs. `screen(s, preview)` renders any screen view; `preview=true` swaps video/images for placeholders and uses `#previewMap`/`data-countdown`.
 - The screen view applies `videoCmd` (seq-based remote commands) via `applyVideoCmd()`, reports video/audio status with `reportTv()`, and resumes the same video at its old position after an overlay.
 - The screen view handles Web Audio (brake sounds, looping destination music) and needs a user click on "Aktivera ljud" because of browser autoplay rules. It de-dupes brake events with the `seenBrakes` set.
+- Phones (team views and the guest picker) get `body.phone`: fixed full-screen layout with no page scroll/bounce/pinch-zoom (`gesturestart` blocked); long content scrolls inside the card. During `closest` stage 1 the team view is `.closest-full` (`body.fullmap`) and the map runs in `centerPin` mode: the pin is fixed at the canvas centre, teams pan/zoom, `onCenter` sends the map centre as the pin (camera may reach the viewport edges).
 - `public/map.js` exposes the map widget used by host (picking the answer + visible viewport) and by teams/screen (pins). It draws from the local `land.geojson`, so no internet or tile server is needed.
 
 ## Conventions and gotchas

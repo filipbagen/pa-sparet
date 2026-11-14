@@ -19,7 +19,8 @@ function land() {
 function cleanup() {
   for(const [key,entry] of active) if(!entry.element.isConnected){entry.destroy();active.delete(key);}
 }
-async function draw(element,{scope='world',viewport=null,locked=false,pins={},correct=null,onPick=null,onDrag=null,onViewport=null,key='map'}={}) {
+// centerPin: nålen sitter fast mitt på kartan och laget flyttar/zoomar kartan under den; onCenter får kartans mittpunkt.
+async function draw(element,{scope='world',viewport=null,locked=false,pins={},correct=null,onPick=null,onDrag=null,onViewport=null,centerPin=false,onCenter=null,start=null,pinColor='#d83027',key='map'}={}) {
   cleanup();
   const b=locked && viewport ? viewport : bounds[scope]||bounds.world;
   const previous=active.get(key);
@@ -46,11 +47,13 @@ async function draw(element,{scope='world',viewport=null,locked=false,pins={},co
   function fit(area) {
     const left=area.west,right=area.east,top=mercator(area.north),bottom=mercator(area.south);
     view.cx=(left+right)/2;view.cy=(top+bottom)/2;
-    view.scale=Math.min(width/(right-left),height/(bottom-top));
+    view.scale=(centerPin?Math.max:Math.min)(width/(right-left),height/(bottom-top)); // mittnål: fyll skärmen, man kan zooma ut till hela utsnittet
   }
   function minimumScale(){return Math.min(width/(limits.east-limits.west),height/(limits.bottom-limits.top));}
   function constrain() {
     view.scale=clamp(view.scale,minimumScale(),12000);
+    // Mittnålen ska kunna nå hela utsnittet, även kanterna, så kameran får gå ända ut till gränsen.
+    if(centerPin){view.cx=clamp(view.cx,limits.west,limits.east);view.cy=clamp(view.cy,limits.top,limits.bottom);return;}
     const halfX=width/(2*view.scale),halfY=height/(2*view.scale);
     view.cx=halfX*2>limits.east-limits.west?(limits.west+limits.east)/2:clamp(view.cx,limits.west+halfX,limits.east-halfX);
     view.cy=halfY*2>limits.bottom-limits.top?(limits.top+limits.bottom)/2:clamp(view.cy,limits.top+halfY,limits.bottom-halfY);
@@ -62,7 +65,13 @@ async function draw(element,{scope='world',viewport=null,locked=false,pins={},co
     }
   }
   function coordinates(x,y){return {lon:view.cx+(x-width/2)/view.scale,lat:latitude(view.cy+(y-height/2)/view.scale)};}
+  function reportCenter() {
+    if(!centerPin||!onCenter||!width)return;
+    const point=coordinates(width/2,height/2);
+    onCenter({lat:+clamp(point.lat,b.south,b.north).toFixed(5),lon:+clamp(point.lon,b.west,b.east).toFixed(5)});
+  }
   function report() {
+    reportCenter();
     if(!onViewport)return;
     const top=latitude(view.cy-height/(2*view.scale)),bottom=latitude(view.cy+height/(2*view.scale));
     onViewport({west:+clamp(view.cx-width/(2*view.scale),b.west,b.east).toFixed(5),east:+clamp(view.cx+width/(2*view.scale),b.west,b.east).toFixed(5),south:+clamp(bottom,b.south,b.north).toFixed(5),north:+clamp(top,b.south,b.north).toFixed(5)});
@@ -80,6 +89,13 @@ async function draw(element,{scope='world',viewport=null,locked=false,pins={},co
       ctx.fill('evenodd');ctx.stroke();
     }
     ctx.restore();
+    if(centerPin){
+      const x=width/2,y=height/2;
+      ctx.beginPath();ctx.ellipse(x,y,7,3,0,0,Math.PI*2);ctx.fillStyle='#0005';ctx.fill();
+      ctx.beginPath();ctx.moveTo(x,y);ctx.bezierCurveTo(x-6,y-14,x-16,y-22,x-16,y-34);ctx.arc(x,y-34,16,Math.PI,0);ctx.bezierCurveTo(x+16,y-22,x+6,y-14,x,y);ctx.closePath();
+      ctx.fillStyle=pinColor;ctx.fill();ctx.strokeStyle='white';ctx.lineWidth=3;ctx.stroke();
+      ctx.beginPath();ctx.arc(x,y-34,6,0,Math.PI*2);ctx.fillStyle='white';ctx.fill();
+    }
     for(const [name,point] of [...Object.entries(pins),...(correct?[['correct',correct]]:[])]){
       if(!point || !Number.isFinite(point.lat)||!Number.isFinite(point.lon))continue;
       const x=width/2+(point.lon-view.cx)*view.scale,y=height/2+(mercator(point.lat)-view.cy)*view.scale;
@@ -94,7 +110,7 @@ async function draw(element,{scope='world',viewport=null,locked=false,pins={},co
     width=element.clientWidth;height=element.clientHeight;
     if(!width||!height)return;
     const dpr=Math.min(window.devicePixelRatio||1,2);canvas.width=Math.round(width*dpr);canvas.height=Math.round(height*dpr);
-    if(!fitted){if(!camera)fit(initial);fitted=true;}
+    if(!fitted){if(!camera)fit(initial);if(centerPin&&start&&Number.isFinite(start.lat)&&Number.isFinite(start.lon)){view.cx=start.lon;view.cy=mercator(start.lat);}fitted=true;}
     refresh();
   }
   const pointers=new Map();let gesture=null,dragging=null;
@@ -119,7 +135,7 @@ async function draw(element,{scope='world',viewport=null,locked=false,pins={},co
     report();
   };
   canvas.onpointercancel=event=>{if(dragging===event.pointerId){dragging=null;onDrag(pins.mine,true);return;}pointers.delete(event.pointerId);gesture=null;};
-  canvas.onwheel=event=>{event.preventDefault();const {lon,lat}=coordinates(event.offsetX,event.offsetY);view.scale*=Math.exp(-event.deltaY*.002);constrain();view.cx=lon-(event.offsetX-width/2)/view.scale;view.cy=mercator(lat)-(event.offsetY-height/2)/view.scale;refresh();};
+  canvas.onwheel=event=>{event.preventDefault();if(centerPin){view.scale*=Math.exp(-event.deltaY*.002);refresh();return;}const {lon,lat}=coordinates(event.offsetX,event.offsetY);view.scale*=Math.exp(-event.deltaY*.002);constrain();view.cx=lon-(event.offsetX-width/2)/view.scale;view.cy=mercator(lat)-(event.offsetY-height/2)/view.scale;refresh();};
   const controls=document.createElement('div');controls.className='local-map-controls';
   for(const [label,factor] of [['+',1.6],['−',1/1.6]]){const button=document.createElement('button');button.type='button';button.textContent=label;button.setAttribute('aria-label',factor>1?'Zooma in':'Zooma ut');button.onclick=()=>{view.scale*=factor;refresh();};controls.append(button);}
   element.append(controls);entry.controls=controls;

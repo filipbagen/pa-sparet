@@ -476,7 +476,7 @@ async function handler(req, res) {
     } else return send(res, 404, { error: 'Hittades inte.' });
     save(); broadcast(); return send(res, 200, view(role));
   }
-  const assets = { '/assets/nodbroms.png': ['nodbroms.png', 'image/png'], '/assets/dressin.ogg': ['dressin.ogg', 'audio/ogg'], '/assets/forstaklass.ogg': ['forstaklass.ogg', 'audio/ogg'], '/assets/resmal-loop.mp3': ['resmal-loop.mp3', 'audio/mpeg'], '/assets/land.geojson': ['land.geojson', 'application/geo+json'] };
+  const assets = { '/assets/nodbroms.png': ['nodbroms.png', 'image/png'], '/assets/dressin.ogg': ['dressin.ogg', 'audio/ogg'], '/assets/forstaklass.ogg': ['forstaklass.ogg', 'audio/ogg'], '/assets/resmal-loop.mp3': ['resmal-loop.mp3', 'audio/mpeg'], '/assets/lobby.mp3': ['lobby.mp3', 'audio/mpeg'], '/assets/land.geojson': ['land.geojson', 'application/geo+json'] };
   if (assets[p]) {
     if ((p.endsWith('.ogg') || p.endsWith('.mp3')) && !seesScreen(role)) return send(res, role ? 403 : 401, { error: 'Ingen åtkomst.' });
     res.writeHead(200, { 'Content-Type': assets[p][1], 'Cache-Control': 'no-store' });
